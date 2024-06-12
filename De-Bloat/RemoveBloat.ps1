@@ -17,7 +17,7 @@
 .OUTPUTS
 C:\ProgramData\Debloat\Debloat.log
 .NOTES
-  Version:        4.1.2
+  Version:        5.0.4
   Author:         Andrew Taylor
   Twitter:        @AndrewTaylor_2
   WWW:            andrewstaylor.com
@@ -66,6 +66,38 @@ C:\ProgramData\Debloat\Debloat.log
   Change 02/12/2023 - Added extra logic before app uninstall to check if a user has logged in
   Change 04/01/2024 - Added Dropbox and DevHome to AppX removal
   Change 05/01/2024 - Added MSTSC to whitelist
+  Change 25/01/2024 - Added logic for LenovoNow/LenovoWelcome
+  Change 25/01/2024 - Updated Dell app list (thanks Hrvoje in comments)
+  Change 29/01/2024 - Changed /I to /X in Dell command
+  Change 30/01/2024 - Fix Lenovo Vantage version
+  Change 31/01/2024 - McAfee fix and Dell changes
+  Change 01/02/2024 - Dell fix
+  Change 01/02/2024 - Added logic around appxremoval to stop failures in logging
+  Change 05/02/2024 - Added whitelist parameters
+  Change 16/02/2024 - Added wildcard to dropbox
+  Change 23/02/2024 - Added Lenovo SmartMeetings
+  Change 06/03/2024 - Added Lenovo View and Vantage
+  Change 08/03/2024 - Added Lenovo Smart Noise Cancellation
+  Change 13/03/2024 - Added updated McAfee
+  Change 20/03/2024 - Dell app fixes
+  Change 02/04/2024 - Stopped it removing Intune Management Extension!
+  Change 03/04/2024 - Switched Win32 removal from whitelist to blacklist
+  Change 10/04/2024 - Office uninstall string fix
+  Change 11/04/2024 - Added Office support for multi-language
+  Change 17/04/2024 - HP Apps update
+  Change 19/04/2024 - HP Fix
+  Change 24/04/2024 - Switched provisionedpackage and appxpackage arround
+  Change 02/05/2024 - Fixed notlike to notin
+  Change 03/05/2024 - Change $uninstallprograms
+  Change 19/05/2024 - Disabled feeds on Win11
+  Change 21/05/2024 - Added QuickAssist to removal after security issues
+  Change 25/05/2024 - Whitelist array fix
+  Change 29/05/2025 - Uninstall fix
+  Change 31/05/2024 - Re-write for manufacturer bloat
+  Change 03/06/2024 - Added function for removing Win32 apps
+  Change 03/06/2024 - Added registry key to block "Tell me about this picture" icon
+  Change 06/06/2024 - Added keys to block Windows Recall
+  Change 07/06/2024 - New fixes for HP and McAfee (thanks to Keith Hay)
 N/A
 #>
 
@@ -73,6 +105,9 @@ N/A
 #                                         Initial Setup                                                    #
 #                                                                                                          #
 ############################################################################################################
+param (
+    [string[]]$customwhitelist
+)
 
 ##Elevate if needed
 
@@ -85,45 +120,12 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
     Start-Sleep 1
     Write-Host "                                               1"
     Start-Sleep 1
-    Start-Process powershell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
+    Start-Process powershell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`" -WhitelistApps {1}" -f $PSCommandPath, ($WhitelistApps -join ',')) -Verb RunAs
     Exit
 }
 
 #no errors throughout
 $ErrorActionPreference = 'silentlycontinue'
-
-
-Function Get-ScriptVersion(){
-    
-    <#
-    .SYNOPSIS
-    This function is used to check if the running script is the latest version
-    .DESCRIPTION
-    This function checks GitHub and compares the 'live' version with the one running
-    .EXAMPLE
-    Get-ScriptVersion
-    Returns a warning and URL if outdated
-    .NOTES
-    NAME: Get-ScriptVersion
-    #>
-    
-    [cmdletbinding()]
-    
-    param
-    (
-        $liveuri
-    )
-$contentheaderraw = (Invoke-WebRequest -Uri $liveuri -Method Get)
-$contentheader = $contentheaderraw.Content.Split([Environment]::NewLine)
-$liveversion = (($contentheader | Select-String 'Version:') -replace '[^0-9.]','') | Select-Object -First 1
-$currentversion = ((Get-Content -Path $PSCommandPath | Select-String -Pattern "Version: *") -replace '[^0-9.]','') | Select-Object -First 1
-if ($liveversion -ne $currentversion) {
-write-host "Script has been updated, please download the latest version from $liveuri" -ForegroundColor Red
-}
-}
-Get-ScriptVersion -liveuri "https://raw.githubusercontent.com/andrew-s-taylor/public/main/De-Bloat/RemoveBloat.ps1"
-
-
 
 
 #Create Folder
@@ -301,109 +303,233 @@ switch ($locale) {
 ############################################################################################################
 
     #Removes AppxPackages
-    $WhitelistedApps = 'Microsoft.WindowsNotepad|Microsoft.CompanyPortal|Microsoft.ScreenSketch|Microsoft.Paint3D|Microsoft.WindowsCalculator|Microsoft.WindowsStore|Microsoft.Windows.Photos|CanonicalGroupLimited.UbuntuonWindows|`
-    |Microsoft.MicrosoftStickyNotes|Microsoft.MSPaint|Microsoft.WindowsCamera|.NET|Framework|`
-    Microsoft.HEIFImageExtension|Microsoft.ScreenSketch|Microsoft.StorePurchaseApp|Microsoft.VP9VideoExtensions|Microsoft.WebMediaExtensions|Microsoft.WebpImageExtension|Microsoft.DesktopAppInstaller|WindSynthBerry|MIDIBerry|Slack'
+    $WhitelistedApps = @(
+        'Microsoft.WindowsNotepad',
+        'Microsoft.CompanyPortal',
+        'Microsoft.ScreenSketch',
+        'Microsoft.Paint3D',
+        'Microsoft.WindowsCalculator',
+        'Microsoft.WindowsStore',
+        'Microsoft.Windows.Photos',
+        'CanonicalGroupLimited.UbuntuonWindows',
+        'Microsoft.MicrosoftStickyNotes',
+        'Microsoft.MSPaint',
+        'Microsoft.WindowsCamera',
+        '.NET Framework',
+        'Microsoft.HEIFImageExtension',
+        'Microsoft.ScreenSketch',
+        'Microsoft.StorePurchaseApp',
+        'Microsoft.VP9VideoExtensions',
+        'Microsoft.WebMediaExtensions',
+        'Microsoft.WebpImageExtension',
+        'Microsoft.DesktopAppInstaller',
+        'WindSynthBerry',
+        'MIDIBerry',
+        'Slack'
+    )
+    ##If $customwhitelist is set, split on the comma and add to whitelist
+    if ($customwhitelist) {
+        $customWhitelistApps = $customwhitelist -split ","
+        foreach ($whitelistapp in $customwhitelistapps) {
+            ##Add to the array
+            $WhitelistedApps += $whitelistapp
+        }
+    }
+    
     #NonRemovable Apps that where getting attempted and the system would reject the uninstall, speeds up debloat and prevents 'initalizing' overlay when removing apps
-    $NonRemovable = '1527c705-839a-4832-9118-54d4Bd6a0c89|c5e2524a-ea46-4f67-841f-6a9465d9d515|E2A4F912-2574-4A75-9BB0-0D023378592B|F46D4000-FD22-4DB4-AC8E-4E1DDDE828FE|InputApp|Microsoft.AAD.BrokerPlugin|Microsoft.AccountsControl|`
-    Microsoft.BioEnrollment|Microsoft.CredDialogHost|Microsoft.ECApp|Microsoft.LockApp|Microsoft.MicrosoftEdgeDevToolsClient|Microsoft.MicrosoftEdge|Microsoft.PPIProjection|Microsoft.Win32WebViewHost|Microsoft.Windows.Apprep.ChxApp|`
-    Microsoft.Windows.AssignedAccessLockApp|Microsoft.Windows.CapturePicker|Microsoft.Windows.CloudExperienceHost|Microsoft.Windows.ContentDeliveryManager|Microsoft.Windows.Cortana|Microsoft.Windows.NarratorQuickStart|`
-    Microsoft.Windows.ParentalControls|Microsoft.Windows.PeopleExperienceHost|Microsoft.Windows.PinningConfirmationDialog|Microsoft.Windows.SecHealthUI|Microsoft.Windows.SecureAssessmentBrowser|Microsoft.Windows.ShellExperienceHost|`
-    Microsoft.Windows.XGpuEjectDialog|Microsoft.XboxGameCallableUI|Windows.CBSPreview|windows.immersivecontrolpanel|Windows.PrintDialog|Microsoft.XboxGameCallableUI|Microsoft.VCLibs.140.00|Microsoft.Services.Store.Engagement|Microsoft.UI.Xaml.2.0|*Nvidia*'
-    Get-AppxPackage -AllUsers | Where-Object {$_.Name -NotMatch $WhitelistedApps -and $_.Name -NotMatch $NonRemovable} | Remove-AppxPackage
-    Get-AppxPackage -allusers | Where-Object {$_.Name -NotMatch $WhitelistedApps -and $_.Name -NotMatch $NonRemovable} | Remove-AppxPackage
-    Get-AppxProvisionedPackage -Online | Where-Object {$_.PackageName -NotMatch $WhitelistedApps -and $_.PackageName -NotMatch $NonRemovable} | Remove-AppxProvisionedPackage -Online
+    $NonRemovable = @(
+        '1527c705-839a-4832-9118-54d4Bd6a0c89',
+        'c5e2524a-ea46-4f67-841f-6a9465d9d515',
+        'E2A4F912-2574-4A75-9BB0-0D023378592B',
+        'F46D4000-FD22-4DB4-AC8E-4E1DDDE828FE',
+        'InputApp',
+        'Microsoft.AAD.BrokerPlugin',
+        'Microsoft.AccountsControl',
+        'Microsoft.BioEnrollment',
+        'Microsoft.CredDialogHost',
+        'Microsoft.ECApp',
+        'Microsoft.LockApp',
+        'Microsoft.MicrosoftEdgeDevToolsClient',
+        'Microsoft.MicrosoftEdge',
+        'Microsoft.PPIProjection',
+        'Microsoft.Win32WebViewHost',
+        'Microsoft.Windows.Apprep.ChxApp',
+        'Microsoft.Windows.AssignedAccessLockApp',
+        'Microsoft.Windows.CapturePicker',
+        'Microsoft.Windows.CloudExperienceHost',
+        'Microsoft.Windows.ContentDeliveryManager',
+        'Microsoft.Windows.Cortana',
+        'Microsoft.Windows.NarratorQuickStart',
+        'Microsoft.Windows.ParentalControls',
+        'Microsoft.Windows.PeopleExperienceHost',
+        'Microsoft.Windows.PinningConfirmationDialog',
+        'Microsoft.Windows.SecHealthUI',
+        'Microsoft.Windows.SecureAssessmentBrowser',
+        'Microsoft.Windows.ShellExperienceHost',
+        'Microsoft.Windows.XGpuEjectDialog',
+        'Microsoft.XboxGameCallableUI',
+        'Windows.CBSPreview',
+        'windows.immersivecontrolpanel',
+        'Windows.PrintDialog',
+        'Microsoft.VCLibs.140.00',
+        'Microsoft.Services.Store.Engagement',
+        'Microsoft.UI.Xaml.2.0',
+        '*Nvidia*'
+    )
+
+    ##Combine the two arrays
+    $appstoignore = $WhitelistedApps += $NonRemovable
+
+
+    $provisioned = Get-AppxProvisionedPackage -Online | Where-Object {$_.DisplayName -notin $appstoignore}
+    foreach ($appxprov in $provisioned) {
+        $packagename = $appxprov.PackageName
+        $displayname = $appxprov.DisplayName
+        write-host "Removing $displayname AppX Provisioning Package"
+        try {
+            Remove-AppxProvisionedPackage -PackageName $packagename -Online
+        }
+        catch {
+            
+        }
+        write-host "Removed $displayname AppX Provisioning Package"
+    }
+
+
+    $appxinstalled = Get-AppxPackage -AllUsers | Where-Object {$_.Name -notin $appstoignore}
+    foreach ($appxapp in $appxinstalled) {
+        $packagename = $appxapp.PackageFullName
+        $displayname = $appxapp.Name
+        ##Check if exists first
+        if (Get-AppxPackage -Name $packagename -ErrorAction SilentlyContinue) {
+            write-host "$displayname AppX Package exists"
+            write-host "Removing $displayname AppX Package"
+            try {
+                Remove-AppxPackage -Package $packagename -AllUsers
+            }
+            catch {
+                
+            }
+            write-host "Removed $displayname AppX Package"
+        } else {
+            write-host "$displayname AppX Package does not exist"
+            # Skip the removal process
+        }
+
+    }
+    
 
 
 ##Remove bloat
-    $Bloatware = @(
+$Bloatware = @(
+    #Unnecessary Windows 10/11 AppX Apps
+    "Microsoft.549981C3F5F10"
+    "Microsoft.BingNews"
+    "Microsoft.GetHelp"
+    "Microsoft.Getstarted"
+    "Microsoft.Messaging"
+    "Microsoft.Microsoft3DViewer"
+    "Microsoft.MicrosoftOfficeHub"
+    "Microsoft.MicrosoftSolitaireCollection"
+    "Microsoft.NetworkSpeedTest"
+    "Microsoft.MixedReality.Portal"
+    "Microsoft.News"
+    "Microsoft.Office.Lens"
+    "Microsoft.Office.OneNote"
+    "Microsoft.Office.Sway"
+    "Microsoft.OneConnect"
+    "Microsoft.People"
+    "Microsoft.Print3D"
+    "Microsoft.RemoteDesktop"
+    "Microsoft.SkypeApp"
+    "Microsoft.StorePurchaseApp"
+    "Microsoft.Office.Todo.List"
+    "Microsoft.Whiteboard"
+    "Microsoft.WindowsAlarms"
+    #"Microsoft.WindowsCamera"
+    "microsoft.windowscommunicationsapps"
+    "Microsoft.WindowsFeedbackHub"
+    "Microsoft.WindowsMaps"
+    "Microsoft.WindowsSoundRecorder"
+    "Microsoft.Xbox.TCUI"
+    "Microsoft.XboxApp"
+    "Microsoft.XboxGameOverlay"
+    "Microsoft.XboxIdentityProvider"
+    "Microsoft.XboxSpeechToTextOverlay"
+    "Microsoft.ZuneMusic"
+    "Microsoft.ZuneVideo"
+    "MicrosoftTeams"
+    "Microsoft.YourPhone"
+    "Microsoft.XboxGamingOverlay_5.721.10202.0_neutral_~_8wekyb3d8bbwe"
+    "Microsoft.GamingApp"
+    "Microsoft.Todos"
+    "Microsoft.PowerAutomateDesktop"
+    "SpotifyAB.SpotifyMusic"
+    "Microsoft.MicrosoftJournal"
+    "Disney.37853FC22B2CE"
+    "*EclipseManager*"
+    "*ActiproSoftwareLLC*"
+    "*AdobeSystemsIncorporated.AdobePhotoshopExpress*"
+    "*Duolingo-LearnLanguagesforFree*"
+    "*PandoraMediaInc*"
+    "*CandyCrush*"
+    "*BubbleWitch3Saga*"
+    "*Wunderlist*"
+    "*Flipboard*"
+    "*Twitter*"
+    "*Facebook*"
+    "*Spotify*"
+    "*Minecraft*"
+    "*Royal Revolt*"
+    "*Sway*"
+    "*Speed Test*"
+    "*Dolby*"
+    "*Office*"
+    "*Disney*"
+    "clipchamp.clipchamp"
+    "*gaming*"
+    "MicrosoftCorporationII.MicrosoftFamily"
+    "C27EB4BA.DropboxOEM*"
+    "*DevHome*"
+    "MicrosoftCorporationII.QuickAssist"
+    #Optional: Typically not removed but you can if you need to for some reason
+    #"*Microsoft.Advertising.Xaml_10.1712.5.0_x64__8wekyb3d8bbwe*"
+    #"*Microsoft.Advertising.Xaml_10.1712.5.0_x86__8wekyb3d8bbwe*"
+    #"*Microsoft.BingWeather*"
+    #"*Microsoft.MSPaint*"
+    #"*Microsoft.MicrosoftStickyNotes*"
+    #"*Microsoft.Windows.Photos*"
+    #"*Microsoft.WindowsCalculator*"
+    #"*Microsoft.WindowsStore*"
+)
+##If custom whitelist specified, remove from array
+if ($customwhitelist) {
+    $customWhitelistApps = $customwhitelist -split ","
+    $Bloatware = $Bloatware | Where-Object { $customWhitelistApps -notcontains $_ }
+}
+    
 
-        #Unnecessary Windows 10/11 AppX Apps
-        "Microsoft.549981C3F5F10"
-        "Microsoft.BingNews"
-        "Microsoft.GetHelp"
-        "Microsoft.Getstarted"
-        "Microsoft.Messaging"
-        "Microsoft.Microsoft3DViewer"
-        "Microsoft.MicrosoftOfficeHub"
-        "Microsoft.MicrosoftSolitaireCollection"
-        "Microsoft.NetworkSpeedTest"
-        "Microsoft.MixedReality.Portal"
-        "Microsoft.News"
-        "Microsoft.Office.Lens"
-        "Microsoft.Office.OneNote"
-        "Microsoft.Office.Sway"
-        "Microsoft.OneConnect"
-        "Microsoft.People"
-        "Microsoft.Print3D"
-        "Microsoft.RemoteDesktop"
-        "Microsoft.SkypeApp"
-        "Microsoft.StorePurchaseApp"
-        "Microsoft.Office.Todo.List"
-        "Microsoft.Whiteboard"
-        "Microsoft.WindowsAlarms"
-        #"Microsoft.WindowsCamera"
-        "microsoft.windowscommunicationsapps"
-        "Microsoft.WindowsFeedbackHub"
-        "Microsoft.WindowsMaps"
-        "Microsoft.WindowsSoundRecorder"
-        "Microsoft.Xbox.TCUI"
-        "Microsoft.XboxApp"
-        "Microsoft.XboxGameOverlay"
-        "Microsoft.XboxIdentityProvider"
-        "Microsoft.XboxSpeechToTextOverlay"
-        "Microsoft.ZuneMusic"
-        "Microsoft.ZuneVideo"
-        "MicrosoftTeams"
-        "Microsoft.YourPhone"
-        "Microsoft.XboxGamingOverlay_5.721.10202.0_neutral_~_8wekyb3d8bbwe"
-        "Microsoft.GamingApp"
-        "Microsoft.Todos"
-        "Microsoft.PowerAutomateDesktop"
-        "SpotifyAB.SpotifyMusic"
-        "Disney.37853FC22B2CE"
-        "*EclipseManager*"
-        "*ActiproSoftwareLLC*"
-        "*AdobeSystemsIncorporated.AdobePhotoshopExpress*"
-        "*Duolingo-LearnLanguagesforFree*"
-        "*PandoraMediaInc*"
-        "*CandyCrush*"
-        "*BubbleWitch3Saga*"
-        "*Wunderlist*"
-        "*Flipboard*"
-        "*Twitter*"
-        "*Facebook*"
-        "*Spotify*"
-        "*Minecraft*"
-        "*Royal Revolt*"
-        "*Sway*"
-        "*Speed Test*"
-        "*Dolby*"
-        "*Office*"
-        "*Disney*"
-        "clipchamp.clipchamp"
-        "*gaming*"
-        "MicrosoftCorporationII.MicrosoftFamily"
-        "C27EB4BA.DropboxOEM"
-        "*DevHome*"
-        #Optional: Typically not removed but you can if you need to for some reason
-        #"*Microsoft.Advertising.Xaml_10.1712.5.0_x64__8wekyb3d8bbwe*"
-        #"*Microsoft.Advertising.Xaml_10.1712.5.0_x86__8wekyb3d8bbwe*"
-        #"*Microsoft.BingWeather*"
-        #"*Microsoft.MSPaint*"
-        #"*Microsoft.MicrosoftStickyNotes*"
-        #"*Microsoft.Windows.Photos*"
-        #"*Microsoft.WindowsCalculator*"
-        #"*Microsoft.WindowsStore*"
-
-    )
     foreach ($Bloat in $Bloatware) {
         
-        Get-AppxPackage -allusers -Name $Bloat| Remove-AppxPackage -AllUsers
-        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $Bloat | Remove-AppxProvisionedPackage -Online
-        Write-Host "Trying to remove $Bloat."
-    }
+        if (Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $Bloat -ErrorAction SilentlyContinue) {
+            Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $Bloat | Remove-AppxProvisionedPackage -Online
+            Write-Host "Removed provisioned package for $Bloat."
+        } else {
+            Write-Host "Provisioned package for $Bloat not found."
+        }
 
+        if (Get-AppxPackage -Name $Bloat -ErrorAction SilentlyContinue) {
+            Get-AppxPackage -allusers -Name $Bloat | Remove-AppxPackage -AllUsers
+            Write-Host "Removed $Bloat."
+        } else {
+            Write-Host "$Bloat not found."
+        }
+
+
+
+        
+
+    }
 ############################################################################################################
 #                                        Remove Registry Keys                                              #
 #                                                                                                          #
@@ -705,6 +831,25 @@ else {
 
 ##Kill Cortana again
 Get-AppxPackage - allusers Microsoft.549981C3F5F10 | Remove AppxPackage
+############################################################################################################
+#                                        Remove Learn about this picture                                   #
+#                                                                                                          #
+############################################################################################################
+
+    #Turn off Learn about this picture
+    Write-Host "Disabling Learn about this picture"
+    $picture = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel'
+    If (Test-Path $picture) {
+        Set-ItemProperty $picture -Name "{2cc5ca98-6485-489a-920e-b3e88a6ccce3}" -Value 1
+    }
+
+    ##Loop through users and do the same
+    foreach ($sid in $UserSIDs) {
+        $picture = "Registry::HKU\$sid\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
+        If (Test-Path $picture) {
+            Set-ItemProperty $picture -Name "{2cc5ca98-6485-489a-920e-b3e88a6ccce3}" -Value 1
+        }
+    }
     
 ############################################################################################################
 #                                        Remove Scheduled Tasks                                            #
@@ -757,22 +902,27 @@ Get-AppxPackage - allusers Microsoft.549981C3F5F10 | Remove AppxPackage
     write-host "Removing Windows 11 Customisations"
     #Remove XBox Game Bar
     
-    Get-AppxPackage -allusers Microsoft.XboxGamingOverlay | Remove-AppxPackage
-    write-host "Removed Xbox Gaming Overlay"
-    Get-AppxPackage -allusers Microsoft.XboxGameCallableUI | Remove-AppxPackage
-    write-host "Removed Xbox Game Callable UI"
+    $packages = @(
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxGameCallableUI",
+        "Microsoft.549981C3F5F10",
+        "*getstarted*",
+        "Microsoft.Windows.ParentalControls"
+    )
+    ##If custom whitelist specified, remove from array
+if ($customwhitelist) {
+    $customWhitelistApps = $customwhitelist -split ","
+    $packages = $packages | Where-Object { $customWhitelistApps -notcontains $_ }
+}
+    
 
-    #Remove Cortana
-    Get-AppxPackage -allusers Microsoft.549981C3F5F10 | Remove-AppxPackage
-    write-host "Removed Cortana"
-
-    #Remove GetStarted
-    Get-AppxPackage -allusers *getstarted* | Remove-AppxPackage
-    write-host "Removed Get Started"
-
-    #Remove Parental Controls
-   Get-AppxPackage -allusers Microsoft.Windows.ParentalControls | Remove-AppxPackage 
-   write-host "Removed Parental Controls"
+    foreach ($package in $packages) {
+        $appPackage = Get-AppxPackage -allusers $package -ErrorAction SilentlyContinue
+        if ($appPackage) {
+            Remove-AppxPackage -Package $appPackage.PackageFullName -AllUsers
+            Write-Host "Removed $package"
+        }
+    }
 
    #Remove Teams Chat
 $MSTeams = "MicrosoftTeams"
@@ -810,12 +960,22 @@ If (!(Test-Path $registryPath)) {
 }
 Set-ItemProperty $registryPath "ChatIcon" -Value 2
 write-host "Removed Teams Chat"
+
+
+##Disable Feeds
+$registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+If (!(Test-Path $registryPath)) { 
+    New-Item $registryPath
+}
+Set-ItemProperty $registryPath "AllowNewsAndInterests" -Value 0
+write-host "Disabled Feeds"
+
 ############################################################################################################
 #                                           Windows Backup App                                             #
 #                                                                                                          #
 ############################################################################################################
-$version = Get-WMIObject win32_operatingsystem | Select-Object Caption
-if ($version.Caption -like "*Windows 10*") {
+$version = Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption
+if ($version -like "*Windows 10*") {
     write-host "Removing Windows Backup"
     $filepath = "C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsBackup\Assets"
 if (Test-Path $filepath) {
@@ -833,8 +993,8 @@ write-host "Removed"
 #                                           Windows CoPilot                                                #
 #                                                                                                          #
 ############################################################################################################
-$version = Get-WMIObject win32_operatingsystem | Select-Object Caption
-if ($version.Caption -like "*Windows 11*") {
+$version = Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption
+if ($version -like "*Windows 11*") {
     write-host "Removing Windows Copilot"
 # Define the registry key and value
 $registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
@@ -926,6 +1086,35 @@ foreach ($sid in $UserSIDs) {
     }
 }
 }
+############################################################################################################
+#                                              Remove Recall                                               #  
+#                                                                                                          #
+############################################################################################################
+
+    #Turn off Recall
+    Write-Host "Disabling Recall"
+    $recall = "HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
+    If (!(Test-Path $recall)) {
+        New-Item $recall
+    }
+    Set-ItemProperty $recall DisableAIDataAnalysis -Value 1
+
+
+    $recalluser = 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI'
+    If (!(Test-Path $recalluser)) {
+        New-Item $recalluser
+    }
+    Set-ItemProperty $recalluser DisableAIDataAnalysis -Value 1
+
+    ##Loop through users and do the same
+    foreach ($sid in $UserSIDs) {
+        $recallusers = "Registry::HKU\$sid\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
+        If (!(Test-Path $recallusers)) {
+            New-Item $recallusers
+        }
+        Set-ItemProperty $recallusers DisableAIDataAnalysis -Value 1
+    }
+
 
 ############################################################################################################
 #                                             Clear Start Menu                                             #
@@ -935,8 +1124,8 @@ write-host "Clearing Start Menu"
 #Delete layout file if it already exists
 
 ##Check windows version
-$version = Get-WMIObject win32_operatingsystem | Select-Object Caption
-if ($version.Caption -like "*Windows 10*") {
+$version = Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption
+if ($version -like "*Windows 10*") {
     write-host "Windows 10 Detected"
     write-host "Removing Current Layout"
     If(Test-Path C:\Windows\StartLayout.xml)
@@ -965,7 +1154,7 @@ if ($version.Caption -like "*Windows 10*") {
     
     Write-Output "</LayoutModificationTemplate>" >> C:\Windows\StartLayout.xml
 }
-if ($version.Caption -like "*Windows 11*") {
+if ($version -like "*Windows 11*") {
     write-host "Windows 11 Detected"
     write-host "Removing Current Layout"
     If(Test-Path "C:\Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.xml")
@@ -1183,6 +1372,46 @@ $allstring += New-Object -TypeName PSObject -Property @{
 
 }
 
+
+function UninstallAppFull {
+
+    param (
+        [string]$appName
+    )
+
+    # Get a list of installed applications from Programs and Features
+    $installedApps = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*,
+    HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+    Where-Object { $_.DisplayName -ne $null } |
+    Select-Object DisplayName, UninstallString
+
+    $userInstalledApps = Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+        Where-Object { $_.DisplayName -ne $null } |
+        Select-Object DisplayName, UninstallString
+
+    $allInstalledApps = $installedApps + $userInstalledApps | Where-Object { $_.DisplayName -eq "$appName" }
+
+    # Loop through the list of installed applications and uninstall them
+
+    foreach ($app in $allInstalledApps) {
+        $uninstallString = $app.UninstallString
+        $displayName = $app.DisplayName
+        if ($uninstallString -match "^msiexec*") {
+            #MSI install, replace the I with an X and make it quiet
+            $string2 = $uninstallString + " /quiet /norestart"
+            $string2 = $uninstallString -replace "/I", "/X "
+            }
+            else {
+            #Exe installer, run straight path
+            $string2 = $uninstallString
+            }
+        Write-Host "Uninstalling: $displayName"
+        #Start-Process $string2
+        Write-Host "Uninstalled: $displayName" -ForegroundColor Green
+    }
+}
+
+
 ############################################################################################################
 #                                        Remove Manufacturer Bloat                                         #
 #                                                                                                          #
@@ -1219,66 +1448,50 @@ $UninstallPrograms = @(
     "HP Sure Recover",
     "HP Sure Run Module"
     "RealtekSemiconductorCorp.HPAudioControl_2.39.280.0_x64__dt26b99r8h8gj"
+    "HP Wolf Security - Console"
+    "HP Wolf Security Application Support for Chrome 122.0.6261.139"
+    "Windows Driver Package - HP Inc. sselam_4_4_2_453 AntiVirus  (11/01/2022 4.4.2.453)"
+
 )
+
+##Add HP whitelist
+    $WhitelistedApps += @(
+)
+
+
+$UninstallPrograms = $UninstallPrograms | Where-Object{$WhitelistedApps -notcontains $_}
 
 $HPidentifier = "AD2F1837"
 
-$InstalledPackages = Get-AppxPackage -AllUsers | Where-Object {($UninstallPackages -contains $_.Name) -or ($_.Name -match "^$HPidentifier")}
+#$ProvisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object {(($UninstallPrograms -contains $_.DisplayName) -or (($_.DisplayName -like "*$HPidentifier"))-and ($_.DisplayName -notin $WhitelistedApps))}
 
-$ProvisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object {($UninstallPackages -contains $_.DisplayName) -or ($_.DisplayName -match "^$HPidentifier")}
+#$InstalledPackages = Get-AppxPackage -AllUsers | Where-Object {(($UninstallPrograms -contains $_.Name) -or (($_.Name -like "^$HPidentifier"))-and ($_.Name -notin $WhitelistedApps))}
 
 $InstalledPrograms = $allstring | Where-Object {$UninstallPrograms -contains $_.Name}
-
-# Remove provisioned packages first
-ForEach ($ProvPackage in $ProvisionedPackages) {
-
-    Write-Host -Object "Attempting to remove provisioned package: [$($ProvPackage.DisplayName)]..."
-
-    Try {
-        $Null = Remove-AppxProvisionedPackage -PackageName $ProvPackage.PackageName -Online -ErrorAction Stop
-        Write-Host -Object "Successfully removed provisioned package: [$($ProvPackage.DisplayName)]"
+foreach ($app in $UninstallPrograms) {
+        
+    if (Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app -ErrorAction SilentlyContinue) {
+        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online
+        Write-Host "Removed provisioned package for $app."
+    } else {
+        Write-Host "Provisioned package for $app not found."
     }
-    Catch {Write-Warning -Message "Failed to remove provisioned package: [$($ProvPackage.DisplayName)]"}
+
+    if (Get-AppxPackage -Name $app -ErrorAction SilentlyContinue) {
+        Get-AppxPackage -allusers -Name $app | Remove-AppxPackage -AllUsers
+        Write-Host "Removed $app."
+    } else {
+        Write-Host "$app not found."
+    }
+
+UninstallAppFull -appName $app
+    
+
 }
 
-# Remove appx packages
-ForEach ($AppxPackage in $InstalledPackages) {
-                                            
-    Write-Host -Object "Attempting to remove Appx package: [$($AppxPackage.Name)]..."
-
-    Try {
-        $Null = Remove-AppxPackage -Package $AppxPackage.PackageFullName -AllUsers -ErrorAction Stop
-        Write-Host -Object "Successfully removed Appx package: [$($AppxPackage.Name)]"
-    }
-    Catch {Write-Warning -Message "Failed to remove Appx package: [$($AppxPackage.Name)]"}
-}
-
-# Remove installed programs
-$InstalledPrograms | ForEach-Object {
-
-    Write-Host -Object "Attempting to uninstall: [$($_.Name)]..."
-    $uninstallcommand = $_.String
-
-    Try {
-        if ($uninstallcommand -match "^msiexec*") {
-            #Remove msiexec as we need to split for the uninstall
-            $uninstallcommand = $uninstallcommand -replace "msiexec.exe", ""
-            #Uninstall with string2 params
-            Start-Process 'msiexec.exe' -ArgumentList $uninstallcommand -NoNewWindow -Wait
-            }
-            else {
-            #Exe installer, run straight path
-            $string2 = $uninstallcommand
-            start-process $string2
-            }
-        #$A = Start-Process -FilePath $uninstallcommand -Wait -passthru -NoNewWindow;$a.ExitCode
-        #$Null = $_ | Uninstall-Package -AllVersions -Force -ErrorAction Stop
-        Write-Host -Object "Successfully uninstalled: [$($_.Name)]"
-    }
-    Catch {Write-Warning -Message "Failed to uninstall: [$($_.Name)]"}
 
 
-}
+
 
 ##Belt and braces, remove via CIM too
 foreach ($program in $UninstallPrograms) {
@@ -1297,6 +1510,17 @@ invoke-webrequest -uri "https://raw.githubusercontent.com/andrew-s-taylor/public
 
 &'C:\Program Files (x86)\InstallShield Installation Information\{6468C4A5-E47E-405F-B675-A70A70983EA6}\setup.exe' @('-s', '-f1C:\Windows\Temp\HPConnOpt.iss')
 }
+
+##Remove other crap
+if (Test-Path -Path "C:\Program Files (x86)\HP\Shared" -PathType Container) {Remove-Item -Path "C:\Program Files (x86)\HP\Shared" -Recurse -Force}
+if (Test-Path -Path "C:\Program Files (x86)\Online Services" -PathType Container) {Remove-Item -Path "C:\Program Files (x86)\Online Services" -Recurse -Force}
+if (Test-Path -Path "C:\ProgramData\HP\TCO" -PathType Container) {Remove-Item -Path "C:\ProgramData\HP\TCO" -Recurse -Force}
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Amazon.com.lnk" -PathType Leaf) {Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Amazon.com.lnk" -Force}
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Angebote.lnk" -PathType Leaf) {Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Angebote.lnk" -Force}
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\TCO Certified.lnk" -PathType Leaf) {Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\TCO Certified.lnk" -Force}
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Booking.com.lnk" -PathType Leaf) {Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Booking.com.lnk" -Force}
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Adobe offers.lnk" -PathType Leaf) {Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Adobe offers.lnk" -Force}
+
 Write-Host "Removed HP bloat"
 }
 
@@ -1315,94 +1539,164 @@ $UninstallPrograms = @(
     "Dell SupportAssist OS Recovery"
     "Dell SupportAssist"
     "Dell Optimizer Service"
+        "Dell Optimizer Core"
     "DellInc.PartnerPromo"
     "DellInc.DellOptimizer"
     "DellInc.DellCommandUpdate"
-    "Dell Command | Update for Windows"
+        "DellInc.DellPowerManager"
+        "DellInc.DellDigitalDelivery"
+        "DellInc.DellSupportAssistforPCs"
+        "DellInc.PartnerPromo"
+        "Dell Command | Update"
+    "Dell Command | Update for Windows Universal"
+        "Dell Command | Update for Windows 10"
+        "Dell Command | Power Manager"
+        "Dell Digital Delivery Service"
     "Dell Digital Delivery"
+        "Dell Peripheral Manager"
+        "Dell Power Manager Service"
     "Dell SupportAssist Remediation"
     "SupportAssist Recovery Assistant"
+        "Dell SupportAssist OS Recovery Plugin for Dell Update"
+        "Dell SupportAssistAgent"
+        "Dell Update - SupportAssist Update Plugin"
+        "Dell Core Services"
+        "Dell Pair"
+        "Dell Display Manager 2.0"
+        "Dell Display Manager 2.1"
+        "Dell Display Manager 2.2"
+        "Dell SupportAssist Remediation"
+        "Dell Update - SupportAssist Update Plugin"
+        "DellInc.PartnerPromo"
 )
 
-$WhitelistedApps = @(
+
+
+$WhitelistedApps += @(
     "WavesAudio.MaxxAudioProforDell2019"
     "Dell - Extension*"
     "Dell, Inc. - Firmware*"
+    "Dell Optimizer Core"
+    "Dell SupportAssist Remediation"
+    "Dell SupportAssist OS Recovery Plugin for Dell Update"
+    "Dell Pair"
+    "Dell Display Manager 2.0"
+    "Dell Display Manager 2.1"
+    "Dell Display Manager 2.2"
+    "Dell Peripheral Manager"
 )
 
-$InstalledPackages = Get-AppxPackage -AllUsers | Where-Object {(($_.Name -in $UninstallPrograms) -or ($_.Name -like "*Dell*")) -and ($_.Name -NotMatch $WhitelistedApps)}
 
-$ProvisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object {(($_.Name -in $UninstallPrograms) -or ($_.Name -like "*Dell*")) -and ($_.Name -NotMatch $WhitelistedApps)}
+    $UninstallPrograms = $UninstallPrograms | Where-Object{$WhitelistedApps -notcontains $_}
 
-$InstalledPrograms = $allstring | Where-Object {(($_.Name -in $UninstallPrograms) -or ($_.Name -like "*Dell*")) -and ($_.Name -NotMatch $WhitelistedApps)}
-# Remove provisioned packages first
-ForEach ($ProvPackage in $ProvisionedPackages) {
 
-    Write-Host -Object "Attempting to remove provisioned package: [$($ProvPackage.DisplayName)]..."
-
-    Try {
-        $Null = Remove-AppxProvisionedPackage -PackageName $ProvPackage.PackageName -Online -ErrorAction Stop
-        Write-Host -Object "Successfully removed provisioned package: [$($ProvPackage.DisplayName)]"
+foreach ($app in $UninstallPrograms) {
+        
+    if (Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app -ErrorAction SilentlyContinue) {
+        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online
+        Write-Host "Removed provisioned package for $app."
+    } else {
+        Write-Host "Provisioned package for $app not found."
     }
-    Catch {Write-Warning -Message "Failed to remove provisioned package: [$($ProvPackage.DisplayName)]"}
-}
 
-# Remove appx packages
-ForEach ($AppxPackage in $InstalledPackages) {
-                                            
-    Write-Host -Object "Attempting to remove Appx package: [$($AppxPackage.Name)]..."
-
-    Try {
-        $Null = Remove-AppxPackage -Package $AppxPackage.PackageFullName -AllUsers -ErrorAction Stop
-        Write-Host -Object "Successfully removed Appx package: [$($AppxPackage.Name)]"
+    if (Get-AppxPackage -Name $app -ErrorAction SilentlyContinue) {
+        Get-AppxPackage -allusers -Name $app | Remove-AppxPackage -AllUsers
+        Write-Host "Removed $app."
+    } else {
+        Write-Host "$app not found."
     }
-    Catch {Write-Warning -Message "Failed to remove Appx package: [$($AppxPackage.Name)]"}
-}
 
-# Remove any bundled packages
-ForEach ($AppxPackage in $InstalledPackages) {
-                                            
-    Write-Host -Object "Attempting to remove Appx package: [$($AppxPackage.Name)]..."
+    UninstallAppFull -appName $app
 
-    Try {
-        $null = Get-AppxPackage -AllUsers -PackageTypeFilter Main, Bundle, Resource -Name $AppxPackage.Name | Remove-AppxPackage -AllUsers
-        Write-Host -Object "Successfully removed Appx package: [$($AppxPackage.Name)]"
-    }
-    Catch {Write-Warning -Message "Failed to remove Appx package: [$($AppxPackage.Name)]"}
-}
+    
 
-
-# Remove installed programs
-$InstalledPrograms | ForEach-Object {
-
-    Write-Host -Object "Attempting to uninstall: [$($_.Name)]..."
-    $uninstallcommand = $_.String
-
-    Try {
-        if ($uninstallcommand -match "^msiexec*") {
-            #Remove msiexec as we need to split for the uninstall
-            $uninstallcommand = $uninstallcommand -replace "msiexec.exe", ""
-            #Uninstall with string2 params
-            Start-Process 'msiexec.exe' -ArgumentList $uninstallcommand -NoNewWindow -Wait
-            }
-            else {
-            #Exe installer, run straight path
-            $string2 = $uninstallcommand
-            start-process $string2
-            }
-        #$A = Start-Process -FilePath $uninstallcommand -Wait -passthru -NoNewWindow;$a.ExitCode        
-        #$Null = $_ | Uninstall-Package -AllVersions -Force -ErrorAction Stop
-        Write-Host -Object "Successfully uninstalled: [$($_.Name)]"
-    }
-    Catch {Write-Warning -Message "Failed to uninstall: [$($_.Name)]"}
 }
 
 ##Belt and braces, remove via CIM too
 foreach ($program in $UninstallPrograms) {
+    write-host "Removing $program"
     Get-CimInstance -Classname Win32_Product | Where-Object Name -Match $program | Invoke-CimMethod -MethodName UnInstall
     }
 
+##Manual Removals
+
+##Dell Optimizer
+$dellSA = Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -like "Dell*Optimizer*Core" } | Select-Object -Property UninstallString
+ 
+ForEach ($sa in $dellSA) {
+    If ($sa.UninstallString) {
+        try {
+        cmd.exe /c $sa.UninstallString -silent
+        }
+        catch {
+            Write-Warning "Failed to uninstall Dell Optimizer"
+        }
+    }
 }
+
+
+##Dell Dell SupportAssist Remediation
+$dellSA = Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -match "Dell SupportAssist Remediation" } | Select-Object -Property QuietUninstallString
+ 
+ForEach ($sa in $dellSA) {
+    If ($sa.QuietUninstallString) {
+        try {
+            cmd.exe /c $sa.QuietUninstallString
+            }
+            catch {
+                Write-Warning "Failed to uninstall Dell Support Assist Remediation"
+            }    }
+}
+
+##Dell Dell SupportAssist OS Recovery Plugin for Dell Update
+$dellSA = Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -match "Dell SupportAssist OS Recovery Plugin for Dell Update" } | Select-Object -Property QuietUninstallString
+ 
+ForEach ($sa in $dellSA) {
+    If ($sa.QuietUninstallString) {
+        try {
+            cmd.exe /c $sa.QuietUninstallString
+            }
+            catch {
+                Write-Warning "Failed to uninstall Dell Support Assist Remediation"
+            }    }
+}
+
+
+
+    ##Dell Display Manager
+$dellSA = Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -like "Dell*Display*Manager*" } | Select-Object -Property UninstallString
+ 
+ForEach ($sa in $dellSA) {
+    If ($sa.UninstallString) {
+        try {
+        cmd.exe /c $sa.UninstallString /S
+        }
+        catch {
+            Write-Warning "Failed to uninstall Dell Optimizer"
+        }
+    }
+}
+
+    ##Dell Peripheral Manager
+
+            try {
+            start-process c:\windows\system32\cmd.exe '/c "C:\Program Files\Dell\Dell Peripheral Manager\Uninstall.exe" /S'
+            }
+            catch {
+                Write-Warning "Failed to uninstall Dell Optimizer"
+            }
+
+
+    ##Dell Pair
+
+            try {
+                start-process c:\windows\system32\cmd.exe '/c "C:\Program Files\Dell\Dell Pair\Uninstall.exe" /S'
+            }
+            catch {
+                Write-Warning "Failed to uninstall Dell Optimizer"
+            }
+
+        }
 
 
 if ($manufacturer -like "Lenovo") {
@@ -1451,6 +1745,7 @@ if ($manufacturer -like "Lenovo") {
     "Ammbkproc.exe"
     "AIMeetingManager.exe"
     "DADUpdater.exe"
+    "CommercialVantage.exe"
     )
 
     foreach ($process in $processnames) {
@@ -1465,75 +1760,45 @@ if ($manufacturer -like "Lenovo") {
         "MirametrixInc.GlancebyMirametrix"
         "E046963F.LenovoCompanion"
         "E0469640.LenovoUtility"
+        "E0469640.LenovoSmartCommunication"
+        "E046963F.LenovoSettingsforEnterprise"
+        "E046963F.cameraSettings"
+        "4505Fortemedia.FMAPOControl2_2.1.37.0_x64__4pejv7q2gmsnr"
+        "ElevocTechnologyCo.Ltd.SmartMicrophoneSettings_1.1.49.0_x64__ttaqwwhyt5s6t"
     )
+
+        ##If custom whitelist specified, remove from array
+        if ($customwhitelist) {
+            $customWhitelistApps = $customwhitelist -split ","
+            $UninstallPrograms = $UninstallPrograms | Where-Object { $customWhitelistApps -notcontains $_ }
+        }
     
     
-    $InstalledPackages = Get-AppxPackage -AllUsers | Where-Object {(($_.Name -in $UninstallPrograms))}
-    
-    $ProvisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object {(($_.Name -in $UninstallPrograms))}
-    
+        
     $InstalledPrograms = $allstring | Where-Object {(($_.Name -in $UninstallPrograms))}
-    # Remove provisioned packages first
-    ForEach ($ProvPackage in $ProvisionedPackages) {
-    
-        Write-Host -Object "Attempting to remove provisioned package: [$($ProvPackage.DisplayName)]..."
-    
-        Try {
-            $Null = Remove-AppxProvisionedPackage -PackageName $ProvPackage.PackageName -Online -ErrorAction Stop
-            Write-Host -Object "Successfully removed provisioned package: [$($ProvPackage.DisplayName)]"
-        }
-        Catch {Write-Warning -Message "Failed to remove provisioned package: [$($ProvPackage.DisplayName)]"}
-    }
-    
-    # Remove appx packages
-    ForEach ($AppxPackage in $InstalledPackages) {
-                                                
-        Write-Host -Object "Attempting to remove Appx package: [$($AppxPackage.Name)]..."
-    
-        Try {
-            $Null = Remove-AppxPackage -Package $AppxPackage.PackageFullName -AllUsers -ErrorAction Stop
-            Write-Host -Object "Successfully removed Appx package: [$($AppxPackage.Name)]"
-        }
-        Catch {Write-Warning -Message "Failed to remove Appx package: [$($AppxPackage.Name)]"}
-    }
-    
-    # Remove any bundled packages
-    ForEach ($AppxPackage in $InstalledPackages) {
-                                                
-        Write-Host -Object "Attempting to remove Appx package: [$($AppxPackage.Name)]..."
-    
-        Try {
-            $null = Get-AppxPackage -AllUsers -PackageTypeFilter Main, Bundle, Resource -Name $AppxPackage.Name | Remove-AppxPackage -AllUsers
-            Write-Host -Object "Successfully removed Appx package: [$($AppxPackage.Name)]"
-        }
-        Catch {Write-Warning -Message "Failed to remove Appx package: [$($AppxPackage.Name)]"}
-    }
-    
-    
-# Remove installed programs
-$InstalledPrograms | ForEach-Object {
 
-    Write-Host -Object "Attempting to uninstall: [$($_.Name)]..."
-    $uninstallcommand = $_.String
-
-    Try {
-        if ($uninstallcommand -match "^msiexec*") {
-            #Remove msiexec as we need to split for the uninstall
-            $uninstallcommand = $uninstallcommand -replace "msiexec.exe", ""
-            #Uninstall with string2 params
-            Start-Process 'msiexec.exe' -ArgumentList $uninstallcommand -NoNewWindow -Wait
-            }
-            else {
-            #Exe installer, run straight path
-            $string2 = $uninstallcommand
-            start-process $string2
-            }
-        #$A = Start-Process -FilePath $uninstallcommand -Wait -passthru -NoNewWindow;$a.ExitCode
-        #$Null = $_ | Uninstall-Package -AllVersions -Force -ErrorAction Stop
-        Write-Host -Object "Successfully uninstalled: [$($_.Name)]"
+    
+foreach ($app in $UninstallPrograms) {
+        
+    if (Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app -ErrorAction SilentlyContinue) {
+        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online
+        Write-Host "Removed provisioned package for $app."
+    } else {
+        Write-Host "Provisioned package for $app not found."
     }
-    Catch {Write-Warning -Message "Failed to uninstall: [$($_.Name)]"}
+
+    if (Get-AppxPackage -Name $app -ErrorAction SilentlyContinue) {
+        Get-AppxPackage -allusers -Name $app | Remove-AppxPackage -AllUsers
+        Write-Host "Removed $app."
+    } else {
+        Write-Host "$app not found."
+    }
+
+    UninstallAppFull -appName $app
+   
+
 }
+
 
 ##Belt and braces, remove via CIM too
 foreach ($program in $UninstallPrograms) {
@@ -1581,26 +1846,55 @@ foreach ($program in $UninstallPrograms) {
      Start-Process -FilePath $path -ArgumentList $params -Wait
      }
     # Uninstall Lenovo Vantage
-    $path = 'C:\Program Files (x86)\Lenovo\VantageService\3.13.43.0\Uninstall.exe'
+    $pathname = (Get-ChildItem -Path "C:\Program Files (x86)\Lenovo\VantageService").name
+    $path = "C:\Program Files (x86)\Lenovo\VantageService\$pathname\Uninstall.exe"
     $params = '/SILENT'
     if (test-path -Path $path) {
         Start-Process -FilePath $path -ArgumentList $params -Wait
     }
+ 
     ##Uninstall Smart Appearance
     $path = 'C:\Program Files\Lenovo\Lenovo Smart Appearance Components\unins000.exe'
     $params = '/SILENT'
     if (test-path -Path $path) {
-        Start-Process -FilePath $path -ArgumentList $params -Wait
+        try {
+            Start-Process -FilePath $path -ArgumentList $params -Wait
+        }
+        catch {
+            Write-Warning "Failed to start the process"
+        }
     }
-
+$lenovowelcome = "c:\program files (x86)\lenovo\lenovowelcome\x86"
+if (Test-Path $lenovowelcome) {
     # Remove Lenovo Now
     Set-Location "c:\program files (x86)\lenovo\lenovowelcome\x86"
 
     # Update $PSScriptRoot with the new working directory
     $PSScriptRoot = (Get-Item -Path ".\").FullName
-    invoke-expression -command .\uninstall.ps1
+    try {
+        invoke-expression -command .\uninstall.ps1 -ErrorAction SilentlyContinue
+    } catch {
+        write-host "Failed to execute uninstall.ps1"
+    }
 
     Write-Host "All applications and associated Lenovo components have been uninstalled." -ForegroundColor Green
+}
+
+$lenovonow = "c:\program files (x86)\lenovo\LenovoNow\x86"
+if (Test-Path $lenovonow) {
+    # Remove Lenovo Now
+    Set-Location "c:\program files (x86)\lenovo\LenovoNow\x86"
+
+    # Update $PSScriptRoot with the new working directory
+    $PSScriptRoot = (Get-Item -Path ".\").FullName
+    try {
+        invoke-expression -command .\uninstall.ps1 -ErrorAction SilentlyContinue
+    } catch {
+        write-host "Failed to execute uninstall.ps1"
+    }
+
+    Write-Host "All applications and associated Lenovo components have been uninstalled." -ForegroundColor Green
+}
 }
 
 
@@ -1651,6 +1945,75 @@ write-host "Removing McAfee"
 start-process "C:\ProgramData\Debloat\Mccleanup.exe" -ArgumentList "-p StopServices,MFSY,PEF,MXD,CSP,Sustainability,MOCP,MFP,APPSTATS,Auth,EMproxy,FWdiver,HW,MAS,MAT,MBK,MCPR,McProxy,McSvcHost,VUL,MHN,MNA,MOBK,MPFP,MPFPCU,MPS,SHRED,MPSCU,MQC,MQCCU,MSAD,MSHR,MSK,MSKCU,MWL,NMC,RedirSvc,VS,REMEDIATION,MSC,YAP,TRUEKEY,LAM,PCB,Symlink,SafeConnect,MGS,WMIRemover,RESIDUE -v -s"
 write-host "McAfee Removal Tool has been run"
 
+###New MCCleanup
+### Download McAfee Consumer Product Removal Tool ###
+write-host "Downloading McAfee Removal Tool"
+# Download Source
+$URL = 'https://github.com/andrew-s-taylor/public/raw/main/De-Bloat/mccleanup.zip'
+
+# Set Save Directory
+$destination = 'C:\ProgramData\Debloat\mcafeenew.zip'
+
+#Download the file
+Invoke-WebRequest -Uri $URL -OutFile $destination -Method Get
+  
+New-Item -Path "C:\ProgramData\Debloat\mcnew" -ItemType Directory
+Expand-Archive $destination -DestinationPath "C:\ProgramData\Debloat\mcnew" -Force
+
+write-host "Removing McAfee"
+# Automate Removal and kill services
+start-process "C:\ProgramData\Debloat\mcnew\Mccleanup.exe" -ArgumentList "-p StopServices,MFSY,PEF,MXD,CSP,Sustainability,MOCP,MFP,APPSTATS,Auth,EMproxy,FWdiver,HW,MAS,MAT,MBK,MCPR,McProxy,McSvcHost,VUL,MHN,MNA,MOBK,MPFP,MPFPCU,MPS,SHRED,MPSCU,MQC,MQCCU,MSAD,MSHR,MSK,MSKCU,MWL,NMC,RedirSvc,VS,REMEDIATION,MSC,YAP,TRUEKEY,LAM,PCB,Symlink,SafeConnect,MGS,WMIRemover,RESIDUE -v -s"
+write-host "McAfee Removal Tool has been run"
+
+$InstalledPrograms = $allstring | Where-Object {($_.Name -like "*McAfee*")}
+$InstalledPrograms | ForEach-Object {
+
+    Write-Host -Object "Attempting to uninstall: [$($_.Name)]..."
+    $uninstallcommand = $_.String
+
+    Try {
+        if ($uninstallcommand -match "^msiexec*") {
+            #Remove msiexec as we need to split for the uninstall
+            $uninstallcommand = $uninstallcommand -replace "msiexec.exe", ""
+            $uninstallcommand = $uninstallcommand + " /quiet /norestart"
+            $uninstallcommand = $uninstallcommand -replace "/I", "/X "   
+            #Uninstall with string2 params
+            Start-Process 'msiexec.exe' -ArgumentList $uninstallcommand -NoNewWindow -Wait
+            }
+            else {
+            #Exe installer, run straight path
+            $string2 = $uninstallcommand
+            start-process $string2
+            }
+        #$A = Start-Process -FilePath $uninstallcommand -Wait -passthru -NoNewWindow;$a.ExitCode        
+        #$Null = $_ | Uninstall-Package -AllVersions -Force -ErrorAction Stop
+        Write-Host -Object "Successfully uninstalled: [$($_.Name)]"
+    }
+    Catch {Write-Warning -Message "Failed to uninstall: [$($_.Name)]"}
+}
+
+##Remove Safeconnect
+$safeconnects = Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -match "McAfee Safe Connect" } | Select-Object -Property UninstallString
+ 
+ForEach ($sc in $safeconnects) {
+    If ($sc.UninstallString) {
+        cmd.exe /c $sc.UninstallString /quiet /norestart
+    }
+}
+
+##
+##remove some extra leftover Mcafee items from StartMenu-AllApps and uninstall registry keys
+##
+if (Test-Path -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\McAfee") {
+	Remove-Item -Path "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\McAfee" -Recurse -Force
+}
+if (Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\McAfee.WPS") {
+	Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\McAfee.WPS" -Recurse -Force
+}
+#Interesting emough, this producese an error, but still deletes the package anyway
+get-appxprovisionedpackage -online | sort-object displayname |format-table displayname,packagename
+get-appxpackage -allusers |sort-object name | format-table name, packagefullname
+Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq "McAfeeWPSSparsePackage" | Remove-AppxProvisionedPackage -Online -AllUsers
 }
 
 
@@ -1671,69 +2034,21 @@ foreach ($user in $userprofiles) {
     }
 }
 
-if ($intunecomplete -eq 0 -and $nonAdminLoggedOn) {
+if ($intunecomplete -lt 1 -and $nonAdminLoggedOn -eq $false) {
 
 
-##Apps to ignore - NOTE: Chrome has an unusual uninstall so sort on it's own
-$whitelistapps = @(
-    "Microsoft Update Health Tools"
-    "Microsoft Intune Management Extension"
-    "Microsoft Edge"
-    "Microsoft Edge Update"
-    "Microsoft Edge WebView2 Runtime"
-    "Google Chrome"
-    "Microsoft Teams"
-    "Teams Machine-Wide Installer"
-    "Microsoft OneDrive"
-    "@C:\WINDOWS\System32\mstsc.exe,-4000"
+##Apps to remove - NOTE: Chrome has an unusual uninstall so sort on it's own
+$blacklistapps = @(
+
 )
 
-$InstalledSoftware = Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-foreach($obj in $InstalledSoftware){
-    $name = $obj.GetValue('DisplayName')
-    if ($null -eq $name) {
-        $name = $obj.GetValue('DisplayName_Localized')
-    }
-     if (($whitelistapps -notcontains $name) -and ($null -ne $obj.GetValue('UninstallString'))) {
-        $uninstallcommand = $obj.GetValue('UninstallString')
-        write-host "Uninstalling $name"
-        if ($uninstallcommand -like "*msiexec*") {
-        $splitcommand = $uninstallcommand.Split("{")
-        $msicode = $splitcommand[1]
-        $uninstallapp = "msiexec.exe /X {$msicode /qn"
-        start-process "cmd.exe" -ArgumentList "/c $uninstallapp"
-        }
-        else {
-        $splitcommand = $uninstallcommand.Split("{")
-        
-        $uninstallapp = "$uninstallcommand /S"
-        start-process "cmd.exe" -ArgumentList "/c $uninstallapp"
-        }
-     }
 
-     }
+foreach ($blacklist in $blacklistapps) {
 
+    UninstallAppFull -appName $blacklist
 
-$InstalledSoftware32 = Get-ChildItem "HKLM:\Software\WOW6432NODE\Microsoft\Windows\CurrentVersion\Uninstall"
-foreach($obj32 in $InstalledSoftware32){
-     $name32 = $obj32.GetValue('DisplayName')
-     if (($whitelistapps -notcontains $name32) -and ($null -ne $obj32.GetValue('UninstallString'))) {
-        $uninstallcommand32 = $obj.GetValue('UninstallString')
-        write-host "Uninstalling $name"
-                if ($uninstallcommand32 -like "*msiexec*") {
-        $splitcommand = $uninstallcommand32.Split("{")
-        $msicode = $splitcommand[1]
-        $uninstallapp = "msiexec.exe /X {$msicode /qn"
-        start-process "cmd.exe" -ArgumentList "/c $uninstallapp"
-        }
-        else {
-        $splitcommand = $uninstallcommand32.Split("{")
-        
-        $uninstallapp = "$uninstallcommand /S"
-        start-process "cmd.exe" -ArgumentList "/c $uninstallapp"
-        }
-    }
 }
+
 
 ##Remove Chrome
 $chrome32path = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Google Chrome"
@@ -1765,6 +2080,23 @@ Start-Process "$directory\Google\Chrome\Application\$version\Installer\setup.exe
 
 }
 
+##Remove home versions of Office
+$OSInfo = Get-WmiObject -Class Win32_OperatingSystem
+$AllLanguages = $OSInfo.MUILanguages
+
+
+$ClickToRunPath = "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeClickToRun.exe"
+foreach($Language in $AllLanguages){
+Start-Process $ClickToRunPath -ArgumentList "scenario=install scenariosubtype=ARP sourcetype=None productstoremove=O365HomePremRetail.16_$($Language)_x-none culture=$($Language) version.16=16.0 DisplayLevel=False" -Wait
+Start-Sleep -Seconds 5
+}
+
+$ClickToRunPath = "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeClickToRun.exe"
+foreach($Language in $AllLanguages){
+Start-Process $ClickToRunPath -ArgumentList "scenario=install scenariosubtype=ARP sourcetype=None productstoremove=OneNoteFreeRetail.16_$($Language)_x-none culture=$($Language) version.16=16.0 DisplayLevel=False" -Wait
+Start-Sleep -Seconds 5
+}
+
 }
 
 write-host "Completed"
@@ -1774,8 +2106,8 @@ Stop-Transcript
 # SIG # Begin signature block
 # MIIoGQYJKoZIhvcNAQcCoIIoCjCCKAYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCD+zEN8IsBuobXU
-# zPrI5opi+/VBLo8ALCRQ9//uVWUNvqCCIRwwggWNMIIEdaADAgECAhAOmxiO+dAt
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCnCRCCIXp6CpWK
+# SpfCeOkfx3EfRpwHzPRpzpbZ3FXulaCCIRwwggWNMIIEdaADAgECAhAOmxiO+dAt
 # 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
 # BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
@@ -1957,33 +2289,33 @@ Stop-Transcript
 # aWduaW5nIFJTQTQwOTYgU0hBMzg0IDIwMjEgQ0ExAhAIsZ/Ns9rzsDFVWAgBLwDp
 # MA0GCWCGSAFlAwQCAQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJ
 # KoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQB
-# gjcCARUwLwYJKoZIhvcNAQkEMSIEIClRWmntwsSXoiMZ/isPTvba3K6B4OH3O27W
-# 8CeUILPsMA0GCSqGSIb3DQEBAQUABIICAGwzpwOPeIhFtR+97a2uRP5bsWJM0MDO
-# TCSATBJElKSI0PLaGPSrTnqdzIBts5GKyrQ8wA5MIjjzrIEoIaHIDIK/L05RWKoO
-# THRGRcqTq1+eJwOnOaiKhafXV2PWxZQvJcBUSCJKUN5S7T7AwPB/sPhAjTC39QGQ
-# RIAyafMoMXTjpliCV+/HBOLjI8Apsemd8fZj6TzIzVYvXfRvi8V1R+OFUAq4e9c5
-# PtZwmyGenmPQ8bbyX+c+hqHlOGlk3JXQoQj/B8ZcffIxHq9oMX8LjTz/m9vz2ZiX
-# 23SpO7kV5DwrU27RwYLnpIu6tGv6CeY3qWxK5cPwKVPB3o8qPsTEQOPMjW0bF4py
-# OZYtaweLz2Nz/P0XFbgLadCk6SzJ8hQePQ+wPN8yCQY6FD6m6Aq5v9+WT5Dd4z17
-# RCO9HqzHjwF7f7ying2BMIvXsHZ1AAzVXmPfFGs2XkO+gMoADU3gnxoETAgmmKFb
-# fXyeT+dz7i6fZ5p6akAStPXvx7TR5/OCvtHWrFCJFFc0XZGrhSn9aCA/n8/2wO8l
-# E7sK0yi/IXqKP0O033Bi+RF9S/O09k3/piH9SXOLeNkddZ8uzAz9/sv1cBatvk8s
-# fNYXraHUlh5xyOrIbFN0NsgMy0pFdCDGqPhTRzTQSiKZwr7kisF/7UsuvnbviG7o
-# b7s7DXj/YzbJoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcwYzELMAkG
+# gjcCARUwLwYJKoZIhvcNAQkEMSIEID4VcSVQMhYIEoT1Pb541OXxOuhRhgGozDqI
+# XIWJXbhdMA0GCSqGSIb3DQEBAQUABIICAG14HvlmmTBC6gDTFmMqtOtXb/w1ojUM
+# MT98UTWjcan6+N9WPar2a9IW6KZZoEPjDDuA0LdBxfrPQu0drdQ3Ax6k6hnFiaF7
+# RgChgv11MYUQaTT801ZnIrsn20xgz+wRmRcz35w1tEE/29JG+7TybbVdTu2Ac5QI
+# ozSY3FKgeL9xugRyvxnuycLlmsDaw+uZCAx1WLCFkgSudgKP+wGg/1aqQi8jBGZQ
+# GFqy3NLS3zNVASmX/8XjjUhfU4HZfYZe4LqA4xGPmgwbXedI9mbxM6o6MmdcpdKP
+# ZRKm/GtUJL+gwgxzWcY5M0/wZZqgTNmF7iXPcqY1oPmFUj1hoavaIA1BmB5PWLy1
+# 1SWTJ/VDQc3YLGmAU9QenlyQQzQOQ0gBkrgiNkn6fKVvzzeyWWdnFTFgA2exVnzo
+# J2iv2swgsR8ZOp7dl8yuxrr17/cVYfvk/kQiQu38QmdxB/TdxEEsAReq6B489jy0
+# Xz2jB2Um/uOyUjK1fi3f451ZBFR6iaIdSGRtmcdtyNwblJVP5oczOGhRya1W+kRv
+# YW65LD9PkqjTzUX7pEwhS6qeDOSvRAcSd2frR0lpDZWetKCJZoNcefmImy/uo/Vo
+# RGJK2BA91/DYKF3lcrtWCF5AiUgsKuE4xcInlMnB/ivAxAT6DdGz0R4/QPsJbjOn
+# yiNp0GuKVAqSoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcwYzELMAkG
 # A1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTswOQYDVQQDEzJEaWdp
 # Q2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVTdGFtcGluZyBDQQIQ
 # BUSv85SdCDmmv9s/X+VhFjANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzEL
-# BgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDEwNTE0MjUyNVowLwYJKoZI
-# hvcNAQkEMSIEIFbjQbHyy7KFOklwWkIS1YNKo2qhHQxOB1gtdoW/fcm/MA0GCSqG
-# SIb3DQEBAQUABIICAF4O3v5sQkddR4khfViRZBD4Vao+vTpJ9yyofyB+XA9fWBmv
-# 79OZUg2OdSq4INezWYAtsrCceV78TCZ912SjaeP0NarYJio3kywxMKGzaWH2BEFo
-# Kp3MNtYaRUm2CW3xqG97t9NZc/ylXnXKp1vTCM7VNByI2vM/657n6nPuaXrXdsiz
-# +Nsfx1pJPDlgxCqA5I34BniKgV8lp8Yyj9kZAESa05jyaEB+Js646tV1a2jHk3nu
-# OitwbDsdiVMewdoVm+kj6yflkKbsJP0Ia4SGBGRetdPjux2EOnghPbwGTUoqhiZ8
-# kMjM0Tq5UHE+ClMUcfw2pNeyAgyAcVwpKaWZSLV3OByWw2Gy3WSXqAmgOlE2DqV6
-# XMzTzsTbX9BR+oU7U1grx+Erp8PGHrn7tBeOnPlZxYmQkcdTTGKxm5/0tRXcTDqE
-# B+f46ZOoq+LTGB5wtJ5bKaMu5H29TPGet/G09LiVDRzJpUFQBVFFr+AmdAbyL1pK
-# f5tENUuZiwyMsCGM2Qu+yuk5CL1h8zWlYQ/KTDdpD9/1lBGfM9ACa5tFewfFwOH6
-# NUqv6fswhSehwXHjNJ2SpvYt56BG/yQiPnFEQoj4+R6devLe1709rqqiztuH7aWg
-# A7ZP5ywZbaLD0UgfaTnEhEHpy+5k83ALEmSp1yhGSJQIm+TUT7b5fCm5GkWj
+# BgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDYwNzIwMDk1MVowLwYJKoZI
+# hvcNAQkEMSIEIHtcDblUbzKShaKyP+2K2fwo4LyG2rgnX4Cip1eyM1yiMA0GCSqG
+# SIb3DQEBAQUABIICAGJSpX+4tRgj6kC7iHo0GXS0vwzHYqijzF8sh7TSXGTEjAGF
+# E/Daw3yD4yB+Qf41UuRm0+e5XFKblwruHJ15u9+Cdl71izVJKnir+RUV5lU1Qdmo
+# IG+fojHvIZP+Oyyf8CGD4VqIcYWGxpuwuAVSaYerWA99Nz7P3sKiJmDf13bjCbHC
+# 01e+Ew3JhKtdk/nAkc936WU/2CDv/R40d9CrQ4+fm5be/FVWWIYASdOmcUuctSx6
+# 5HiKuXyWltaMflxAVlXwcVqLhx/LvSJbZFrBWGNRGgn+oeo2RWVsFABGPGAqrsvr
+# qQRqQxSloGdGIshitfTNw2QW09O1Ff8iEKLEYp26AlBQpNorxPGqJ2m0wxyM30oO
+# +EJZM7k3VbsIgLas6T1AmtGTUn86mXwatnsEtU6LAuw3mHz/+aXinCzm31NXW/oF
+# Y1Nj2Tw4osBTIF4CAbFKXuF4qA2Ty2LE2cGyiuipm6YZR9EJkFLRvIIptbVDsZRe
+# FPegncBWriMYt2sTSL47Qo1Qtd8VnHtCzC/7QaPWu12ZWcHAjMjRlCS6PclQH2Pi
+# LKLXHi6vo/ijRC7GHY9nWaEZrHs1fVn/e3c8yxXa54MZjBNoIYzRrkAPNoQsofPz
+# Q1Xl+zW2bSCRRY/QiiB6t9od0if2JrgIguKbgyBP8eRPhZjQEFE0PLU2jIHK
 # SIG # End signature block

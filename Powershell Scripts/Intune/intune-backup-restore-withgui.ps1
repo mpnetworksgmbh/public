@@ -16,12 +16,12 @@ None
 .OUTPUTS
 Creates a log file in %Temp%
 .NOTES
-  Version:        6.2.4
+  Version:        7.0.6
   Author:         Andrew Taylor
   Twitter:        @AndrewTaylor_2
   WWW:            andrewstaylor.com
   Creation Date:  24/11/2022
-  Updated: 06/12/2023
+  Updated: 13/05/2024
   Purpose/Change: Initial script development
   Change: Added support for W365 Provisioning Policies
   Change: Added support for W365 User Settings Policies
@@ -69,14 +69,23 @@ Creates a log file in %Temp%
   Change: Added support for template creation
   Change: Set connection to use basic parsing for runbooks
   Change: Fix for Boolean custom policies
-
+  Change: Added feature and quality updates
+  Change: Added support for Git pagination
+  Change: Added Driver Update profiles
+  Change: Group creation fix
+  Change: Switched array so groups deploy first
+  Change: Added live migration support for a tenant to tenant migration
+  Change: Fixed bool issue on custom policies
+  Change: Added automatic change of tenant ID within policies when using Live Migration
+  Change: Added logic to not restore groups on a migration to avoid clashes with Identity migration apps
+  Change: Date fixes for quality and feature update policies
 
   .EXAMPLE
 N/A
 #>
 
 <#PSScriptInfo
-.VERSION 6.2.4
+.VERSION 7.0.6
 .GUID 4bc67c81-0a03-4699-8313-3f31a9ec06ab
 .AUTHOR AndrewTaylor
 .COMPANYNAME 
@@ -99,7 +108,8 @@ N/A
     
 param
 (
-    [string]$type #Type can be "backup" or "restore"
+    [ValidateSet("backup", "restore", "livemigration")]
+    [string]$type #Type can be "backup", "restore" or "livemigration"
     ,  
     [string[]]$name #Item Name
     ,  
@@ -119,6 +129,8 @@ param
     , 
     [string]$tenant #Tenant ID (optional) for when automating and you want to use across tenants instead of hard-coded
     ,
+    [string]$secondtenant #Tenant ID for destination tenant(optional) for when automating and you want to use across tenants instead of hard-coded
+    ,
     [string]$clientid #ClientID is the type of Azure AD App Reg ID
     ,
     [string]$clientsecret #ClientSecret is the type of Azure AD App Reg Secret
@@ -130,6 +142,8 @@ param
     [string]$template #Used with backup, adds "template" to the filename, can be "yes" or "no"
     ,
     [string]$templatename #Used with backup, adds a name to the template
+    ,
+    [string]$rename #Adds "restored" to restored policies
     ,
     [object] $WebHookData #Webhook data for Azure Automation
 
@@ -157,6 +171,9 @@ $assignments = ((($bodyData.assignments) | out-string).trim())
 $groupcreate = ((($bodyData.groupcreate) | out-string).trim())
 $templatecheck  = ((($bodyData.template) | out-string).trim())
 $templatename  = ((($bodyData.templatename) | out-string).trim())
+$rename = ((($bodyData.rename) | out-string).trim())
+$secondtenant = ((($bodyData.secondtenant) | out-string).trim())
+
 
 $keycheck = ((($bodyData.webhooksecret) | out-string).trim())
 
@@ -229,7 +246,12 @@ if ($idcheck -eq $true) {
 ############################################################
 
 ## Change the below to "yes" if you want to change the name of the policies when restoring to Name - restore - date
-$changename = "yes"
+if ($rename -eq "yes") {
+    $changename -eq "yes"
+}
+else {
+$changename = "no"
+}
 
 ####### First check if running automated and bypass parameters to set variables below
 
@@ -472,7 +494,7 @@ writelog "Graph Connection Established"
 }
 else {
 ##Connect to Graph
-Select-MgProfile -Name Beta
+#Select-MgProfile -Name Beta
 Connect-ToGraph -Scopes "Policy.ReadWrite.ConditionalAccess, CloudPC.ReadWrite.All, DeviceManagementServiceConfig.ReadWrite.All, RoleAssignmentSchedule.ReadWrite.Directory, Domain.Read.All, Domain.ReadWrite.All, Directory.Read.All, Policy.ReadWrite.ConditionalAccess, DeviceManagementApps.ReadWrite.All, DeviceManagementConfiguration.ReadWrite.All, DeviceManagementManagedDevices.ReadWrite.All, openid, profile, email, offline_access, DeviceManagementRBAC.Read.All, DeviceManagementRBAC.ReadWrite.All"
 }
 
@@ -786,7 +808,7 @@ Function Get-DeviceConfigurationPolicy(){
     
         
 }
-    
+
 ##########################################################################################
 
 Function Get-GroupPolicyConfigurationsDefinitionValues()
@@ -1560,6 +1582,135 @@ Function Get-Win365UserSettings(){
    
 }
 
+
+Function Get-FeatureUpdatePolicies(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Feature Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Feature Update Policies
+    .EXAMPLE
+    Get-FeatureUpdatePolicies
+    Returns any Feature Update Policies configured in Intune
+    .NOTES
+    NAME: Get-FeatureUpdatePolicies
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $id
+    )
+    
+    $graphApiVersion = "beta"
+    $DCP_resource = "deviceManagement/windowsFeatureUpdateProfiles"
+    try {
+            if($id){
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    
+            }
+    
+            else {
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+            }
+        }
+        catch {}
+    
+   
+}
+
+Function Get-DriverUpdatePolicies(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Driver Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Driver Update Policies
+    .EXAMPLE
+    Get-DriverUpdatePolicies
+    Returns any Driver Update Policies configured in Intune
+    .NOTES
+    NAME: Get-DriverUpdatePolicies
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $id
+    )
+    
+    $graphApiVersion = "beta"
+    $DCP_resource = "deviceManagement/windowsDriverUpdateProfiles"
+    try {
+            if($id){
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    
+            }
+    
+            else {
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+            }
+        }
+        catch {}
+    
+   
+}
+
+Function Get-QualityUpdatePolicies(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Quality Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Quality Update Policies
+    .EXAMPLE
+    Get-QualityUpdatePolicies
+    Returns any Quality Update Policies configured in Intune
+    .NOTES
+    NAME: Get-QualityUpdatePolicies
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $id
+    )
+    
+    $graphApiVersion = "beta"
+    $DCP_resource = "deviceManagement/windowsQualityUpdateProfiles"
+    try {
+            if($id){
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    
+            }
+    
+            else {
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
+            (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+            }
+        }
+        catch {}
+    
+   
+}
 Function Get-Win365ProvisioningPolicies(){
     
     <#
@@ -2297,6 +2448,55 @@ Function Get-DeviceConfigurationPolicybyName(){
             return $output
     }
     
+
+
+    Function Get-APConfigurationPolicybyName(){
+    
+        <#
+        .SYNOPSIS
+        This function is used to get Autopilot configuration policies from the Graph API REST interface
+        .DESCRIPTION
+        The function connects to the Graph API Interface and gets any Autopilot configuration policies
+        .EXAMPLE
+        Get-APConfigurationPolicybyName
+        Returns any Autopilot configuration policies configured in Intune
+        .NOTES
+        NAME: Get-APConfigurationPolicybyName
+        #>
+        
+        [cmdletbinding()]
+        
+        param
+        (
+            $name
+        )
+        
+        $graphApiVersion = "beta"
+        $Resource = "deviceManagement/configurationPolicies"
+        
+        try {
+    
+        
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=name eq '$name'"
+            $DC = (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+        
+            }
+            catch {}
+            $myid = $DC.id
+            if ($null -ne $myid) {
+                $fulluri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$myid"
+                $type = "Configuration Policy"
+                }
+                else {
+                    $fulluri = ""
+                    $type = ""
+                }
+                $output = "" | Select-Object -Property id,fulluri, type    
+                $output.id = $myid
+                $output.fulluri = $fulluri
+                $output.type = $type
+                return $output
+        }
     
 Function Get-DeviceConfigurationPolicySCbyName(){
     
@@ -2886,6 +3086,154 @@ Function Get-Win365UserSettingsbyName(){
    
 }
 
+Function Get-QualityUpdatePoliciesbyName(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Quality Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Quality Update Policies
+    .EXAMPLE
+    Get-QualityUpdatePoliciesbyName
+    Returns any Quality Update Policies configured in Intune
+    .NOTES
+    NAME: Get-QualityUpdatePoliciesbyName
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $name
+    )
+    
+    $graphApiVersion = "beta"
+    $Resource = "deviceManagement/windowsQualityUpdateProfiles"
+    try {
+
+    
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=displayName eq '$name'"
+        $W365User = (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+        }
+        catch {}
+        $myid = $W365User.id
+        if ($null -ne $myid) {
+            $fulluri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$myid"
+            $type = "Quality Update"
+            }
+            else {
+                $fulluri = ""
+                $type = ""
+            }
+            $output = "" | Select-Object -Property id,fulluri, type    
+            $output.id = $myid
+            $output.fulluri = $fulluri
+            $output.type = $type
+            return $output
+        
+   
+}
+
+Function GetFeatureUpdatePoliciesbyName(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Feature Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Feature Update Policies
+    .EXAMPLE
+    Get-FeatureUpdatePolicies
+    Returns any Feature Update Policies configured in Intune
+    .NOTES
+    NAME: Get-FeatureUpdatePolicies
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $name
+    )
+    
+    $graphApiVersion = "beta"
+    $Resource = "deviceManagement/windowsFeatureUpdateProfiles"
+    try {
+
+    
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=displayName eq '$name'"
+        $W365User = (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+        }
+        catch {}
+        $myid = $W365User.id
+        if ($null -ne $myid) {
+            $fulluri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$myid"
+            $type = "Feature Update"
+            }
+            else {
+                $fulluri = ""
+                $type = ""
+            }
+            $output = "" | Select-Object -Property id,fulluri, type    
+            $output.id = $myid
+            $output.fulluri = $fulluri
+            $output.type = $type
+            return $output
+        
+   
+}
+
+
+Function GetDriverUpdatePoliciesbyName(){
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Driver Update Policies from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Driver Update Policies
+    .EXAMPLE
+    Get-DriverUpdatePoliciesbyName
+    Returns any Driver Update Policies configured in Intune
+    .NOTES
+    NAME: Get-DriverUpdatePoliciesbyName
+    #>
+    
+    [cmdletbinding()]
+    
+    param
+    (
+        $name
+    )
+    
+    $graphApiVersion = "beta"
+    $Resource = "deviceManagement/windowsDriverUpdateProfiles"
+    try {
+
+    
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=displayName eq '$name'"
+        $W365User = (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject).Value
+    
+        }
+        catch {}
+        $myid = $W365User.id
+        if ($null -ne $myid) {
+            $fulluri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$myid"
+            $type = "Driver Update"
+            }
+            else {
+                $fulluri = ""
+                $type = ""
+            }
+            $output = "" | Select-Object -Property id,fulluri, type    
+            $output.id = $myid
+            $output.fulluri = $fulluri
+            $output.type = $type
+            return $output
+        
+   
+}
+
 Function Get-Win365ProvisioningPoliciesbyName(){
     
     <#
@@ -3451,6 +3799,13 @@ if ($null -ne $check.id) {
     $type = $check.type
     break
 }
+$check = Get-APConfigurationPolicybyName -name $name
+if ($null -ne $check.id) {
+    $id = $check.id
+    $uri = $check.fulluri
+    $type = $check.type
+    break
+}
 $check = Get-DeviceConfigurationPolicySCbyName -name $name
 if ($null -ne $check.id) {
     $id = $check.id
@@ -3557,6 +3912,27 @@ if ($null -ne $check.id) {
     break
 }
 $check = Get-Win365UserSettingsbyName -name $name
+if ($null -ne $check.id) {
+    $id = $check.id
+    $uri = $check.fulluri
+    $type = $check.type
+    break
+}
+$check = Get-FeatureUpdatePoliciesbyName -name $name
+if ($null -ne $check.id) {
+    $id = $check.id
+    $uri = $check.fulluri
+    $type = $check.type
+    break
+}
+$check = Get-QualityUpdatePoliciesbyName -name $name
+if ($null -ne $check.id) {
+    $id = $check.id
+    $uri = $check.fulluri
+    $type = $check.type
+    break
+}
+$check = Get-DriverUpdatePoliciesbyName -name $name
 if ($null -ne $check.id) {
     $id = $check.id
     $uri = $check.fulluri
@@ -3741,6 +4117,43 @@ Function Get-DeviceConfigurationPolicyAssignments() {
             
     $graphApiVersion = "Beta"
     $Resource = "deviceManagement/deviceConfigurations"
+            
+    try {
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id/assignments"
+                    (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    }
+            
+    catch {
+            
+    }
+            
+}
+
+
+Function Get-APConfigurationPolicyAssignments() {
+    
+    <#
+            .SYNOPSIS
+            This function is used to get Autopilot configuration Policy assignments from the Graph API REST interface
+            .DESCRIPTION
+            The function connects to the Graph API Interface and gets any Autopilot configuration policy assignments
+            .EXAMPLE
+            Get-APConfigurationPolicyAssignments
+            Returns any Autopilot configuration policy assignments configured in Intune
+            .NOTES
+            NAME: Get-APConfigurationPolicyAssignments
+            #>
+            
+    [cmdletbinding()]
+            
+    param
+    (
+        [Parameter(Position = 0, mandatory = $true)]
+        $id
+    )
+            
+    $graphApiVersion = "Beta"
+    $Resource = "deviceManagement/configurationPolicies"
             
     try {
         $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id/assignments"
@@ -4076,6 +4489,98 @@ Function Get-Win365UserSettingsAssignments() {
                                                     
 }
 
+Function Get-FeatureUpdatePoliciesAssignments() {
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Feature Update Policies assignments from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Feature Update Policies assignments
+    .EXAMPLE
+    Get-FeatureUpdatePoliciesAssignments
+    Returns any Feature Update Policies assignments configured in Intune
+    .NOTES
+    NAME: Get-FeatureUpdatePoliciesAssignments
+    #>
+    [cmdletbinding()]
+    param
+    (
+        [Parameter(Position = 0, mandatory = $true)]
+        $id
+    )
+    $graphApiVersion = "Beta"
+    $Resource = "deviceManagement/windowsFeatureUpdateProfiles"
+    try {
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id/assignments"
+        (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    }
+
+    catch {
+    }
+}
+
+
+Function Get-QualityUpdatePoliciesAssignments() {
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Quality Update Policies assignments from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Quality Update Policies assignments
+    .EXAMPLE
+    Get-QualityUpdatePoliciesAssignments
+    Returns any Quality Update Policies assignments configured in Intune
+    .NOTES
+    NAME: Get-QualityUpdatePoliciesAssignments
+    #>
+    [cmdletbinding()]
+    param
+    (
+        [Parameter(Position = 0, mandatory = $true)]
+        $id
+    )
+    $graphApiVersion = "Beta"
+    $Resource = "deviceManagement/windowsQualityUpdateProfiles"
+    try {
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id/assignments"
+        (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    }
+
+    catch {
+    }
+}
+
+
+Function Get-DriverUpdatePoliciesAssignments() {
+    
+    <#
+    .SYNOPSIS
+    This function is used to get Driver Update Policies assignments from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets any Driver Update Policies assignments
+    .EXAMPLE
+    Get-DriverUpdatePoliciesAssignments
+    Returns any Driver Update Policies assignments configured in Intune
+    .NOTES
+    NAME: Get-DriverUpdatePoliciesAssignments
+    #>
+    [cmdletbinding()]
+    param
+    (
+        [Parameter(Position = 0, mandatory = $true)]
+        $id
+    )
+    $graphApiVersion = "Beta"
+    $Resource = "deviceManagement/windowsDriverUpdateProfiles"
+    try {
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id/assignments"
+        (Invoke-MgGraphRequest -Uri $uri -Method Get -OutputType PSObject)
+    }
+
+    catch {
+    }
+}
+
 Function Get-Win365ProvisioningPoliciesAssignments() {
     
     <#
@@ -4363,6 +4868,7 @@ function convertnametoid() {
 foreach ($assignment in $json) {
     $groupid = $assignment.target.groupid
     if ($groupid) {
+        $allgroups = getallgroups
     $groupname = $allgroups | where-object {$_.displayName -eq $groupid} | select-object -expandproperty ID
     ##If group can't be found and create is yes, create it
     if (!$groupname -and $create -eq "yes") {
@@ -4396,635 +4902,704 @@ return $json
 
 #################################################################################################
 function getpolicyjson() {
-        <#
-    .SYNOPSIS
-    This function is used to add a new device policy by copying an existing policy, manipulating the JSON and then adding via Graph
-    .DESCRIPTION
-    The function grabs an existing policy, decrypts if requires, renames, removes any GUIDs and then returns the JSON
-    .EXAMPLE
-    getpolicyjson -policy $policy -name $name
-    .NOTES
-    NAME: getpolicyjson
-    #>
+    <#
+.SYNOPSIS
+This function is used to add a new device policy by copying an existing policy, manipulating the JSON and then adding via Graph
+.DESCRIPTION
+The function grabs an existing policy, decrypts if requires, renames, removes any GUIDs and then returns the JSON
+.EXAMPLE
+getpolicyjson -policy $policy -name $name
+.NOTES
+NAME: getpolicyjson
+#>
 
-    param
-    (
-        $resource,
-        $policyid
-    )
-    write-host $resource
-    $id = $policyid
-    $graphApiVersion = "beta"
-    switch ($resource) {
-    "deviceManagement/deviceConfigurations" {
-     $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-     $policy = Get-DecryptedDeviceConfigurationPolicy -dcpid $id
-     $oldname = $policy.displayName
-     $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-     if ($changename -eq "yes") {
+param
+(
+    $resource,
+    $policyid
+)
+write-host $resource
+$id = $policyid
+$graphApiVersion = "beta"
+switch ($resource) {
+"deviceManagement/deviceConfigurations" {
+ $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+ $policy = Get-DecryptedDeviceConfigurationPolicy -dcpid $id
+ $oldname = $policy.displayName
+ $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+ if ($changename -eq "yes") {
+    $newname = $oldname + "-restore-" + $restoredate
+}
+else {
+    $newname = $oldname
+}
+ $policy.displayName = $newname
+
+ ##Custom settings only for OMA-URI
+         ##Remove settings which break Custom OMA-URI
+    
+         
+         if ($null -ne $policy.omaSettings) {
+            $policyconvert = $policy.omaSettings
+         $policyconvert = $policyconvert | Select-Object -Property * -ExcludeProperty secretReferenceValueId
+         foreach ($pvalue in $policyconvert) {
+         $unencoded = $pvalue.value
+         ##Check if $unencoded is boolean
+         if ($unencoded -is [bool] -or $unencoded -is [int] -or $unencoded -is [int32] -or $unencoded -is [int64]) {
+            $unencoded = $unencoded.ToString().ToLower()
+        }
+        $EncodedText =[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($unencoded))
+        
+$pvalue.value = $unencoded
+         }
+         $policy.omaSettings = @($policyconvert)
+        }
+     # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+if ($policy.supportsScopeTags) {
+    $policy.supportsScopeTags = $false
+}
+
+
+
+    $policy.PSObject.Properties | Foreach-Object {
+        if ($null -ne $_.Value) {
+            if ($_.Value.GetType().Name -eq "DateTime") {
+                $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+            }
+            if ($_.Value.GetType().Name -eq "isEncrypted") {
+                $_.Value = "false"
+            }
+        }
+    }
+
+    $assignments = Get-DeviceConfigurationPolicyAssignments -id $id
+}
+
+"deviceManagement/groupPolicyConfigurations" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceConfigurationPolicyGP -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
         $newname = $oldname + "-restore-" + $restoredate
     }
     else {
         $newname = $oldname
-    }
-     $policy.displayName = $newname
+    }        $policy.displayName = $newname
+        # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+   if ($policy.supportsScopeTags) {
+       $policy.supportsScopeTags = $false
+   }
 
-     ##Custom settings only for OMA-URI
-             ##Remove settings which break Custom OMA-URI
+       $policy.PSObject.Properties | Foreach-Object {
+           if ($null -ne $_.Value) {
+               if ($_.Value.GetType().Name -eq "DateTime") {
+                   $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+               }
+           }
+       }
+
+          $assignments = Get-DeviceConfigurationPolicyGPAssignments -id $id
+   }
+
+"deviceManagement/devicehealthscripts" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceProactiveRemediations -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+        # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+   if ($policy.supportsScopeTags) {
+       $policy.supportsScopeTags = $false
+   }
+
+       $policy.PSObject.Properties | Foreach-Object {
+           if ($null -ne $_.Value) {
+               if ($_.Value.GetType().Name -eq "DateTime") {
+                   $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+               }
+           }
+       }
+
+            $assignments = Get-DeviceProactiveRemediationsAssignments -id $id
+   }
+   "deviceAppManagement/mobileAppConfigurations" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-MobileAppConfigurations -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+        # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+   if ($policy.supportsScopeTags) {
+       $policy.supportsScopeTags = $false
+   }
+
+       $policy.PSObject.Properties | Foreach-Object {
+           if ($null -ne $_.Value) {
+               if ($_.Value.GetType().Name -eq "DateTime") {
+                   $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+               }
+           }
+       }
+
+            $assignments = Get-MobileAppConfigurationsAssignments -id $id
+   }
+
+   "deviceManagement/devicemanagementscripts" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceManagementScripts -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+        # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+   if ($policy.supportsScopeTags) {
+       $policy.supportsScopeTags = $false
+   }
+
+       $policy.PSObject.Properties | Foreach-Object {
+           if ($null -ne $_.Value) {
+               if ($_.Value.GetType().Name -eq "DateTime") {
+                   $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+               }
+           }
+       }
+
+            $assignments = Get-DeviceManagementScriptsAssignments -id $id
+   }
+
+   "deviceManagement/deviceComplianceScripts" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceCompliancePolicyScripts -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+        # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+   if ($policy.supportsScopeTags) {
+       $policy.supportsScopeTags = $false
+   }
+
+       $policy.PSObject.Properties | Foreach-Object {
+           if ($null -ne $_.Value) {
+               if ($_.Value.GetType().Name -eq "DateTime") {
+                   $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+               }
+           }
+       }
         
-             
-             if ($null -ne $policy.omaSettings) {
-                $policyconvert = $policy.omaSettings
-             $policyconvert = $policyconvert | Select-Object -Property * -ExcludeProperty secretReferenceValueId
-             foreach ($pvalue in $policyconvert) {
-             $unencoded = $pvalue.value
-             ##Check if $unencoded is boolean
-             if ($unencoded -is [bool] -or $unencoded -is [int] -or $unencoded -is [int32] -or $unencoded -is [int64]) {
-                $unencoded = $unencoded.ToString().ToLower()
+                $assignments = Get-DeviceCompliancePolicyScriptsAssignments -id $id
+   }
+
+
+   "deviceManagement/configurationPolicies" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceConfigurationPolicysc -id $id
+    $policy | Add-Member -MemberType NoteProperty -Name 'settings' -Value @() -Force
+    #$settings = Invoke-MSGraphRequest -HttpMethod GET -Url "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies/$id/settings" | Get-MSGraphAllPages
+    $uri2 = "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies/$id/settings"
+    $response = (Invoke-MgGraphRequest -uri $uri2 -Method Get -OutputType PSObject)
+    $allsettings = $response.value
+    
+    $allsettingsNextLink = $response."@odata.nextLink"
+    
+    while ($null -ne $allsettingsNextLink) {
+        $allsettingsResponse = (Invoke-MGGraphRequest -Uri $allsettingsNextLink -Method Get -outputType PSObject)
+        $allsettingsNextLink = $allsettingsResponse."@odata.nextLink"
+        $allsettings += $allsettingsResponse.value
+    }
+
+    $settings =  $allsettings | select-object * -ExcludeProperty '@odata.count'
+    if ($settings -isnot [System.Array]) {
+        $policy.Settings = @($settings)
+    } else {
+        $policy.Settings = $settings
+    }
+    
+    #
+    $oldname = $policy.Name
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.Name = $newname
+        $assignments = Get-DeviceConfigurationPolicySCAssignments -id $id
+
+}
+
+"deviceManagement/deviceCompliancePolicies" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceCompliancePolicy -id $id
+    $oldname = $policy.DisplayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+    
+        $scheduledActionsForRule = @(
+            @{
+                ruleName = "PasswordRequired"
+                scheduledActionConfigurations = @(
+                    @{
+                        actionType = "block"
+                        gracePeriodHours = 0
+                        notificationTemplateId = ""
+                    }
+                )
             }
-            $EncodedText =[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($unencoded))
-            
-$pvalue.value = $EncodedText
-             }
-             $policy.omaSettings = @($policyconvert)
-            }
-         # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-    if ($policy.supportsScopeTags) {
+        )
+        $policy | Add-Member -NotePropertyName scheduledActionsForRule -NotePropertyValue $scheduledActionsForRule
+        
+        $assignments = Get-DeviceCompliancePolicyAssignments -id $id
+        
+}
+
+"deviceManagement/intents" {
+    $policy = Get-DeviceSecurityPolicy -id $id
+    $templateid = $policy.templateID
+    $uri = "https://graph.microsoft.com/beta/deviceManagement/templates/$templateId/createInstance"
+    #$template = Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid" -Headers $authToken -Method Get
+    $template = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid" -OutputType PSObject
+    $template = $template
+    #$templateCategory = Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid/categories" -Headers $authToken -Method Get
+    $templateCategories = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid/categories" -OutputType PSObject).Value
+    #$intentSettingsDelta = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/intents/$id/categories/$($templateCategory.id)/settings" -Headers $authToken -Method Get).value
+    $intentSettingsDelta = @()
+    foreach ($templateCategory in $templateCategories) {
+        # Get all configured values for the template categories
+        Write-Verbose "Requesting Intent Setting Values"
+        $intentSettingsDelta += (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/intents/$($policy.id)/categories/$($templateCategory.id)/settings").value
+    }
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy = @{
+        "displayName" = $newname
+        "description" = $policy.description
+        "settingsDelta" = $intentSettingsDelta
+        "roleScopeTagIds" = $policy.roleScopeTagIds
+    }
+    $policy | Add-Member -NotePropertyName displayName -NotePropertyValue $newname
+
+    $assignments = Get-DeviceSecurityPolicyAssignments -id $id
+
+}
+"deviceManagement/windowsAutopilotDeploymentProfiles" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-AutoPilotProfile -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy.displayName = $newname
+
+    $assignments = Get-AutoPilotProfileAssignments -id $id
+}
+"groups" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-GraphAADGroups -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy.displayName = $newname
+    $policy = $policy | Select-Object description, DisplayName, groupTypes, mailEnabled, mailNickname, securityEnabled, isAssignabletoRole, membershiprule, MembershipRuleProcessingState
+
+    $assignments = "none"
+}
+"deviceManagement/deviceEnrollmentConfigurationsESP" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/deviceManagement/deviceEnrollmentConfigurations"
+    $policy = Get-AutoPilotESP -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy.displayName = $newname
+
+    $assignments = Get-AutoPilotESPAssignments -id $id
+}
+"deviceManagement/virtualEndpoint/userSettings" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-Win365UserSettings -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = Get-Win365UserSettingsAssignments -id $id
+}
+"deviceManagement/windowsFeatureUpdateProfiles" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-FeatureUpdatePolicies -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        
+    $policy.displayName = $newname
+    $policyendtime = $policy.rolloutSettings.offerEndDateTimeinUTC
+    $policystarttime = $policy.rolloutSettings.offerStartDateTimeinUTC
+    if ($policyendtime -ne $null) {
+    $policyendtime = $policyendtime.tostring('yyyy-MM-ddTHH:mm:ss.000Z')
+    }
+    if ($policystarttime -ne $null) {
+    $policystarttime = $policystarttime.tostring('yyyy-MM-ddTHH:mm:ss.000Z')
+    }
+    $policy.rolloutSettings.offerEndDateTimeinUTC = $policyendtime
+    $policy.rolloutSettings.offerStartDateTimeinUTC = $policystarttime
+
+
+    $policy = $policy | Select-Object * -ExcludeProperty endOfSupportDate
+
+
+    $assignments = Get-FeatureUpdatePoliciesAssignments -id $id
+}
+
+"deviceManagement/windowsQualityUpdateProfiles" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-QualityUpdatePolicies -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        
+    $policy.displayName = $newname
+    $policyupdaterelease = $policy.expeditedUpdateSettings.qualityUpdateRelease
+    if ($policyupdaterelease -ne $null) {
+    $policyupdaterelease = $policyupdaterelease.tostring('yyyy-MM-ddTHH:mm:ss.000Z')
+    }
+    $policy.expeditedUpdateSettings.qualityUpdateRelease = $policyupdaterelease
+
+
+    $policy = $policy
+
+
+    $assignments = Get-QualityUpdatePoliciesAssignments -id $id
+}
+"deviceManagement/windowsDriverUpdateProfiles" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DriverUpdatePolicies -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = Get-DriverUpdatePoliciesAssignments -id $id
+}
+
+"deviceManagement/virtualEndpoint/provisioningPolicies" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-Win365ProvisioningPolicies -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = Get-Win365ProvisioningPoliciesAssignments -id $id
+}
+"deviceAppManagement/managedAppPoliciesandroid" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies"
+    #$policy = Invoke-RestMethod -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -Headers $authToken -Method Get
+    $policy = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -OutputType PSObject
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy.displayName = $newname
+     # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+     if ($policy.supportsScopeTags) {
         $policy.supportsScopeTags = $false
     }
-
-
 
         $policy.PSObject.Properties | Foreach-Object {
             if ($null -ne $_.Value) {
                 if ($_.Value.GetType().Name -eq "DateTime") {
                     $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
                 }
-                if ($_.Value.GetType().Name -eq "isEncrypted") {
-                    $_.Value = "false"
-                }
             }
         }
 
-        $assignments = Get-DeviceConfigurationPolicyAssignments -id $id
-    }
+    $assignments = "none"
 
-    "deviceManagement/groupPolicyConfigurations" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceConfigurationPolicyGP -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-            # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-       if ($policy.supportsScopeTags) {
-           $policy.supportsScopeTags = $false
-       }
-   
-           $policy.PSObject.Properties | Foreach-Object {
-               if ($null -ne $_.Value) {
-                   if ($_.Value.GetType().Name -eq "DateTime") {
-                       $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                   }
-               }
-           }
-
-              $assignments = Get-DeviceConfigurationPolicyGPAssignments -id $id
-       }
-
-    "deviceManagement/devicehealthscripts" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceProactiveRemediations -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-            # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-       if ($policy.supportsScopeTags) {
-           $policy.supportsScopeTags = $false
-       }
-   
-           $policy.PSObject.Properties | Foreach-Object {
-               if ($null -ne $_.Value) {
-                   if ($_.Value.GetType().Name -eq "DateTime") {
-                       $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                   }
-               }
-           }
-
-                $assignments = Get-DeviceProactiveRemediationsAssignments -id $id
-       }
-       "deviceAppManagement/mobileAppConfigurations" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-MobileAppConfigurations -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-            # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-       if ($policy.supportsScopeTags) {
-           $policy.supportsScopeTags = $false
-       }
-   
-           $policy.PSObject.Properties | Foreach-Object {
-               if ($null -ne $_.Value) {
-                   if ($_.Value.GetType().Name -eq "DateTime") {
-                       $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                   }
-               }
-           }
-
-                $assignments = Get-MobileAppConfigurationsAssignments -id $id
-       }
-
-       "deviceManagement/devicemanagementscripts" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceManagementScripts -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-            # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-       if ($policy.supportsScopeTags) {
-           $policy.supportsScopeTags = $false
-       }
-   
-           $policy.PSObject.Properties | Foreach-Object {
-               if ($null -ne $_.Value) {
-                   if ($_.Value.GetType().Name -eq "DateTime") {
-                       $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                   }
-               }
-           }
-
-                $assignments = Get-DeviceManagementScriptsAssignments -id $id
-       }
-
-       "deviceManagement/deviceComplianceScripts" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceCompliancePolicyScripts -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-            # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-       if ($policy.supportsScopeTags) {
-           $policy.supportsScopeTags = $false
-       }
-   
-           $policy.PSObject.Properties | Foreach-Object {
-               if ($null -ne $_.Value) {
-                   if ($_.Value.GetType().Name -eq "DateTime") {
-                       $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                   }
-               }
-           }
-            
-                    $assignments = Get-DeviceCompliancePolicyScriptsAssignments -id $id
-       }
-    
-
-       "deviceManagement/configurationPolicies" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceConfigurationPolicysc -id $id
-        $policy | Add-Member -MemberType NoteProperty -Name 'settings' -Value @() -Force
-        #$settings = Invoke-MSGraphRequest -HttpMethod GET -Url "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies/$id/settings" | Get-MSGraphAllPages
-        $uri2 = "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies/$id/settings"
-        $response = (Invoke-MgGraphRequest -uri $uri2 -Method Get -OutputType PSObject)
-        $allsettings = $response.value
-        
-        $allsettingsNextLink = $response."@odata.nextLink"
-        
-        while ($null -ne $allsettingsNextLink) {
-            $allsettingsResponse = (Invoke-MGGraphRequest -Uri $allsettingsNextLink -Method Get -outputType PSObject)
-            $allsettingsNextLink = $allsettingsResponse."@odata.nextLink"
-            $allsettings += $allsettingsResponse.value
-        }
-
-        $settings =  $allsettings | select-object * -ExcludeProperty '@odata.count'
-        if ($settings -isnot [System.Array]) {
-            $policy.Settings = @($settings)
-        } else {
-            $policy.Settings = $settings
-        }
-        
-        #
-        $oldname = $policy.Name
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.Name = $newname
-            $assignments = Get-DeviceConfigurationPolicySCAssignments -id $id
-
-    }
-    
-    "deviceManagement/deviceCompliancePolicies" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceCompliancePolicy -id $id
-        $oldname = $policy.DisplayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-        
-            $scheduledActionsForRule = @(
-                @{
-                    ruleName = "PasswordRequired"
-                    scheduledActionConfigurations = @(
-                        @{
-                            actionType = "block"
-                            gracePeriodHours = 0
-                            notificationTemplateId = ""
-                        }
-                    )
-                }
-            )
-            $policy | Add-Member -NotePropertyName scheduledActionsForRule -NotePropertyValue $scheduledActionsForRule
-            
-            $assignments = Get-DeviceCompliancePolicyAssignments -id $id
-            
-    }
-    
-    "deviceManagement/intents" {
-        $policy = Get-DeviceSecurityPolicy -id $id
-        $templateid = $policy.templateID
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/templates/$templateId/createInstance"
-        #$template = Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid" -Headers $authToken -Method Get
-        $template = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid" -OutputType PSObject
-        $template = $template
-        #$templateCategory = Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid/categories" -Headers $authToken -Method Get
-        $templateCategories = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/templates/$templateid/categories" -OutputType PSObject).Value
-        #$intentSettingsDelta = (Invoke-RestMethod -Uri "https://graph.microsoft.com/beta/deviceManagement/intents/$id/categories/$($templateCategory.id)/settings" -Headers $authToken -Method Get).value
-        $intentSettingsDelta = @()
-        foreach ($templateCategory in $templateCategories) {
-            # Get all configured values for the template categories
-            Write-Verbose "Requesting Intent Setting Values"
-            $intentSettingsDelta += (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/beta/deviceManagement/intents/$($policy.id)/categories/$($templateCategory.id)/settings").value
-        }
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy = @{
-            "displayName" = $newname
-            "description" = $policy.description
-            "settingsDelta" = $intentSettingsDelta
-            "roleScopeTagIds" = $policy.roleScopeTagIds
-        }
-        $policy | Add-Member -NotePropertyName displayName -NotePropertyValue $newname
-
-        $assignments = Get-DeviceSecurityPolicyAssignments -id $id
-
-    }
-    "deviceManagement/windowsAutopilotDeploymentProfiles" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-AutoPilotProfile -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-
-        $assignments = Get-AutoPilotProfileAssignments -id $id
-    }
-    "groups" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-GraphAADGroups -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-        $policy = $policy | Select-Object description, DisplayName, groupTypes, mailEnabled, mailNickname, securityEnabled, isAssignabletoRole, membershiprule, MembershipRuleProcessingState
-
-        $assignments = "none"
-    }
-    "deviceManagement/deviceEnrollmentConfigurationsESP" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/deviceManagement/deviceEnrollmentConfigurations"
-        $policy = Get-AutoPilotESP -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-
-        $assignments = Get-AutoPilotESPAssignments -id $id
-    }
-    "deviceManagement/virtualEndpoint/userSettings" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-Win365UserSettings -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = Get-Win365UserSettingsAssignments -id $id
-    }
-    "deviceManagement/virtualEndpoint/provisioningPolicies" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-Win365ProvisioningPolicies -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = Get-Win365ProvisioningPoliciesAssignments -id $id
-    }
-    "deviceAppManagement/managedAppPoliciesandroid" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies"
-        #$policy = Invoke-RestMethod -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -Headers $authToken -Method Get
-        $policy = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -OutputType PSObject
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-         # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-         if ($policy.supportsScopeTags) {
-            $policy.supportsScopeTags = $false
-        }
-    
-            $policy.PSObject.Properties | Foreach-Object {
-                if ($null -ne $_.Value) {
-                    if ($_.Value.GetType().Name -eq "DateTime") {
-                        $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                    }
-                }
-            }
-
-        $assignments = "none"
-
-    }
-    "deviceAppManagement/managedAppPoliciesios" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies"
-        #$policy = Invoke-RestMethod -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -Headers $authToken -Method Get
-        $policy = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -OutputType PSObject
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-         # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
-         if ($policy.supportsScopeTags) {
-            $policy.supportsScopeTags = $false
-        }
-    
-            $policy.PSObject.Properties | Foreach-Object {
-                if ($null -ne $_.Value) {
-                    if ($_.Value.GetType().Name -eq "DateTime") {
-                        $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
-                    }
-                }
-            }
-
-
-        $assignments = "none"
-    }
-
-    "conditionalaccess" {
-        $uri = "conditionalaccess"
-        $policy = Get-ConditionalAccessPolicy -id $id
-        $oldname = $policy.displayName
-    }
-    "deviceAppManagement/mobileApps" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/mobileApps"
-        $policy = Get-IntuneApplication -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }           $policy.displayName = $newname
-        $policy = $policy | Select-Object * -ExcludeProperty uploadState, publishingState, isAssigned, dependentAppCount, supersedingAppCount, supersededAppCount
-
-        $assignments = Get-IntuneApplicationAssignments -id $id
-    }
-    "deviceAppManagement/policySets" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-IntunePolicySets -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-        $policyitems = $policy.items | select-object * -ExcludeProperty createdDateTime, lastModifiedDateTime, id, itemType, displayName, status, errorcode, priority, targetedAppManagementLevels
-        $policy.items = $policyitems
-        $policy = $policy | Select-Object * -ExcludeProperty '@odata.context', status, errorcode, 'items@odata.context'
-
-        $assignments = "none"
-    }
-    "deviceManagement/deviceEnrollmentConfigurations" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-EnrollmentConfigurations -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = Get-EnrollmentConfigurationsAssignments -id $id
-    }
-    "deviceManagement/deviceEnrollmentConfigurationswhfb" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/deviceManagement/deviceEnrollmentConfigurations"
-        $policy = Get-WHfBPolicies -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = Get-EnrollmentConfigurationsAssignments -id $id
-
-    }
-    "deviceManagement/deviceCategories" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceCategories -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = "none"
-    }
-    "deviceManagement/assignmentFilters" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-DeviceFilters -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-        $policy = $policy | Select-Object * -ExcludeProperty Payloads
-
-        $assignments = "none"
-    }
-    "deviceManagement/intuneBrandingProfiles" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-BrandingProfiles -id $id
-        $oldname = $policy.profileName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.profileName = $newname
-
-        $assignments = Get-BrandingProfilesAssignments -id $id
-    }
-    "deviceManagement/operationApprovalPolicies" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-AdminApprovals -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = get-adminapprovalassignments -id $id
-    }
-    "deviceManagement/organizationalMessageDetails" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-OrgMessages -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = "none"
-    }
-    "deviceManagement/termsAndConditions" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-IntuneTerms -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-        $policy = $policy | Select-Object * -ExcludeProperty modifiedDateTime
-
-        $assignments = Get-IntuneTermsAssignments -id $id
-    }
-    "deviceManagement/roleDefinitions" {
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-        $policy = Get-IntuneRoles -id $id
-        $oldname = $policy.displayName
-        $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-        if ($changename -eq "yes") {
-            $newname = $oldname + "-restore-" + $restoredate
-        }
-        else {
-            $newname = $oldname
-        }        $policy.displayName = $newname
-
-        $assignments = "none"
-    }
-    }
-
-    ##We don't want to convert CA policy to JSON
-    if (($resource -eq "conditionalaccess")) {
-        $policy = $policy
-            ##If Authentication strength is included, we need to make some tweaks
-    if ($policy.grantControls.authenticationStrength) {
-        $policy.grantControls = $policy.grantControls | Select-Object * -ExcludeProperty authenticationStrength@odata.context
-        $policy.grantControls.authenticationStrength = $policy.grantControls.authenticationStrength | Select-Object id
-        write-host "set"
-        }
-        $assignments = "none"
+}
+"deviceAppManagement/managedAppPoliciesios" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies"
+    #$policy = Invoke-RestMethod -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -Headers $authToken -Method Get
+    $policy = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/managedAppPolicies('$id')" -OutputType PSObject
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
     }
     else {
-    # Remove any GUIDs or dates/times to allow Intune to regenerate
-    if ($resource -eq "deviceManagement/termsAndConditions") {
-        ##We need the version number for T&Cs
-        $policy = $policy | Select-Object * -ExcludeProperty id, createdDateTime, LastmodifieddateTime, creationSource, '@odata.count' | ConvertTo-Json -Depth 100
-    
-        }
-        else {
-        $policy = $policy | Select-Object * -ExcludeProperty id, createdDateTime, LastmodifieddateTime, version, creationSource, '@odata.count' | ConvertTo-Json -Depth 100
-        }
+        $newname = $oldname
+    }           $policy.displayName = $newname
+     # Set SupportsScopeTags to $false, because $true currently returns an HTTP Status 400 Bad Request error.
+     if ($policy.supportsScopeTags) {
+        $policy.supportsScopeTags = $false
+    }
+
+        $policy.PSObject.Properties | Foreach-Object {
+            if ($null -ne $_.Value) {
+                if ($_.Value.GetType().Name -eq "DateTime") {
+                    $_.Value = (Get-Date -Date $_.Value -Format s) + "Z"
+                }
+            }
         }
 
-    return $policy, $uri, $oldname, $assignments
+
+    $assignments = "none"
+}
+
+"conditionalaccess" {
+    $uri = "conditionalaccess"
+    $policy = Get-ConditionalAccessPolicy -id $id
+    $oldname = $policy.displayName
+}
+"deviceAppManagement/mobileApps" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/deviceAppManagement/mobileApps"
+    $policy = Get-IntuneApplication -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }           $policy.displayName = $newname
+    $policy = $policy | Select-Object * -ExcludeProperty uploadState, publishingState, isAssigned, dependentAppCount, supersedingAppCount, supersededAppCount
+
+    $assignments = Get-IntuneApplicationAssignments -id $id
+}
+"deviceAppManagement/policySets" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-IntunePolicySets -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+    $policyitems = $policy.items | select-object * -ExcludeProperty createdDateTime, lastModifiedDateTime, id, itemType, displayName, status, errorcode, priority, targetedAppManagementLevels
+    $policy.items = $policyitems
+    $policy = $policy | Select-Object * -ExcludeProperty '@odata.context', status, errorcode, 'items@odata.context'
+
+    $assignments = "none"
+}
+"deviceManagement/deviceEnrollmentConfigurations" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-EnrollmentConfigurations -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = Get-EnrollmentConfigurationsAssignments -id $id
+}
+"deviceManagement/deviceEnrollmentConfigurationswhfb" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/deviceManagement/deviceEnrollmentConfigurations"
+    $policy = Get-WHfBPolicies -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = Get-EnrollmentConfigurationsAssignments -id $id
+
+}
+"deviceManagement/deviceCategories" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceCategories -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = "none"
+}
+"deviceManagement/assignmentFilters" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-DeviceFilters -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+    $policy = $policy | Select-Object * -ExcludeProperty Payloads
+
+    $assignments = "none"
+}
+"deviceManagement/intuneBrandingProfiles" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-BrandingProfiles -id $id
+    $oldname = $policy.profileName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.profileName = $newname
+
+    $assignments = Get-BrandingProfilesAssignments -id $id
+}
+"deviceManagement/operationApprovalPolicies" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-AdminApprovals -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = get-adminapprovalassignments -id $id
+}
+"deviceManagement/organizationalMessageDetails" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-OrgMessages -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = "none"
+}
+"deviceManagement/termsAndConditions" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-IntuneTerms -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+    $policy = $policy | Select-Object * -ExcludeProperty modifiedDateTime
+
+    $assignments = Get-IntuneTermsAssignments -id $id
+}
+"deviceManagement/roleDefinitions" {
+    $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+    $policy = Get-IntuneRoles -id $id
+    $oldname = $policy.displayName
+    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+    if ($changename -eq "yes") {
+        $newname = $oldname + "-restore-" + $restoredate
+    }
+    else {
+        $newname = $oldname
+    }        $policy.displayName = $newname
+
+    $assignments = "none"
+}
+}
+
+##We don't want to convert CA policy to JSON
+if (($resource -eq "conditionalaccess")) {
+    $policy = $policy
+        ##If Authentication strength is included, we need to make some tweaks
+if ($policy.grantControls.authenticationStrength) {
+    $policy.grantControls = $policy.grantControls | Select-Object * -ExcludeProperty authenticationStrength@odata.context
+    $policy.grantControls.authenticationStrength = $policy.grantControls.authenticationStrength | Select-Object id
+    write-host "set"
+    }
+    $assignments = "none"
+}
+else {
+# Remove any GUIDs or dates/times to allow Intune to regenerate
+if ($resource -eq "deviceManagement/termsAndConditions") {
+    ##We need the version number for T&Cs
+    $policy = $policy | Select-Object * -ExcludeProperty id, createdDateTime, LastmodifieddateTime, creationSource, '@odata.count' | ConvertTo-Json -Depth 100
+
+    }
+    else {
+    $policy = $policy | Select-Object * -ExcludeProperty id, createdDateTime, LastmodifieddateTime, version, creationSource, '@odata.count', installLatestWindows10OnWindows11IneligibleDevice | ConvertTo-Json -Depth 100
+    }
+    }
+
+return $policy, $uri, $oldname, $assignments
 
 }
 
@@ -5033,7 +5608,7 @@ $pvalue.value = $EncodedText
 #################################                   BACKUP             #######################################
 ###############################################################################################################
 
-if ($type -eq "backup") {
+if (($type -eq "backup") -or ($type -eq "livemigration")) {
 
 
 
@@ -5079,8 +5654,10 @@ $configuration += Get-DeviceSecurityPolicy | Select-Object ID, DisplayName, Desc
 ##Get Autopilot Profiles
 $configuration += Get-AutoPilotProfile | Select-Object ID, DisplayName, Description, @{N='Type';E={"Autopilot Profile"}}
 
+if ($type -ne "livemigration") {
 ##Get AAD Groups
 $configuration += Get-GraphAADGroups | Select-Object ID, DisplayName, Description, @{N='Type';E={"AAD Group"}}
+}
 
 ##Get Autopilot ESP
 $configuration += Get-AutoPilotESP | Select-Object ID, DisplayName, Description, @{N='Type';E={"Autopilot ESP"}}
@@ -5101,6 +5678,15 @@ $configuration += Get-IntuneApplication | Select-Object ID, DisplayName, Descrip
 
 ##Get Win365 User Settings
 $configuration += Get-Win365UserSettings | Select-Object ID, DisplayName, Description,  @{N='Type';E={"Win365 User Settings"}}
+
+##Get Feature Updates
+$configuration += Get-FeatureUpdatePolicies | Select-Object ID, DisplayName, Description,  @{N='Type';E={"Feature Update"}}
+
+##Get Quality Updates
+$configuration += Get-QualityUpdatePolicies | Select-Object ID, DisplayName, Description,  @{N='Type';E={"Quality Update"}}
+
+##Get Driver Updates
+$configuration += Get-DriverUpdatePolicies | Select-Object ID, DisplayName, Description,  @{N='Type';E={"Driver Update"}}
 
 ##Get Win365 Provisioning Policies
 $configuration += Get-Win365ProvisioningPolicies | Select-Object ID, DisplayName, Description,  @{N='Type';E={"Win365 Provisioning Policy"}}
@@ -5195,11 +5781,16 @@ if (($namecheck -ne $true) -and ($idcheck -ne $true)) {
     $ca = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Conditional Access Policy")}
     $proac = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Proactive Remediation")}
     $appconfig = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "App Config")}
+    if ($type -ne "livemigration") {
     $aad = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "AAD Group")}
+    }
     $wingetapp = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Winget Application")}
     $scripts = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "PowerShell Script")}
     $compliancescripts = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Compliance Script")}
     $win365usersettings = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Win365 User Settings")}
+    $featureupdates = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Feature Update")}
+    $qualityupdates = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Quality Update")}
+    $driverupdates = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Driver Update")}
     $win365provisioning = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Win365 Provisioning Policy")}
     $policysets = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Policy Set")}
     $enrollmentconfigs = $configuration | where-object {($_.ID -eq $id) -and ($_.Type -eq "Enrollment Configuration")}
@@ -5226,7 +5817,9 @@ if (($namecheck -ne $true) -and ($idcheck -ne $true)) {
     $ca = Get-ConditionalAccessPolicy -id $id
     $proac = Get-DeviceProactiveRemediations -id $id
     $appconfig = Get-MobileAppConfigurations -id $id
+    if ($type -ne "livemigration") {
     $aad = Get-GraphAADGroups -id $id
+    }
     $wingetapp = Get-IntuneApplication -id $id
     $scripts = Get-DeviceManagementScripts -id $id
     $compliancescripts = Get-DeviceCompliancePolicyScripts -id $id
@@ -5242,6 +5835,9 @@ if (($namecheck -ne $true) -and ($idcheck -ne $true)) {
     $intuneterms = Get-IntuneTerms -id $id
     $intunerole = Get-IntuneRoles -id $id
     $whfb = get-whfbpolicies -id $id
+    $featureupdates = get-FeatureUpdatePolicies -id $id
+    $qualityupdates = get-qualityUpdatePolicies -id $id
+    $driverupdates = get-driverUpdatePolicies -id $id
     }
 
 
@@ -5485,6 +6081,7 @@ $assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgro
 }
 $profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
 }
+if ($type -ne "livemigration") {
 if ($null -ne $aad) {
     # AAD Groups
 write-output "It's an AAD Group"
@@ -5501,6 +6098,7 @@ else {
 $assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgroups -allfilters $allfilters
 }
 $profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
+}
 }
 if ($null -ne $ca) {
     # Conditional Access
@@ -5553,6 +6151,60 @@ $assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgro
 }
 $profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
 }
+if ($null -ne $featureupdates) {
+    # Feature Updates
+write-output "It's a Feature Update"
+writelog "It's a Feature Update"
+
+$id = $featureupdates.id
+$Resource = "deviceManagement/windowsFeatureUpdateProfiles"
+$copypolicy = getpolicyjson -resource $Resource -policyid $id
+$rawassignments = $copypolicy[3]
+if ($rawassignments -eq "none") {
+$assignmentname = "No Available Assignment" 
+} 
+else {
+$assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgroups -allfilters $allfilters
+}
+$profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
+}
+
+if ($null -ne $qualityupdates) {
+    # Quality Updates
+write-output "It's a Quality Update"
+writelog "It's a Quality Update"
+
+$id = $qualityupdates.id
+$Resource = "deviceManagement/windowsQualityUpdateProfiles"
+$copypolicy = getpolicyjson -resource $Resource -policyid $id
+$rawassignments = $copypolicy[3]
+if ($rawassignments -eq "none") {
+$assignmentname = "No Available Assignment" 
+} 
+else {
+$assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgroups -allfilters $allfilters
+}
+$profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
+}
+
+if ($null -ne $driverupdates) {
+    # Quality Updates
+write-output "It's a Driver Update"
+writelog "It's a Driver Update"
+
+$id = $driverupdates.id
+$Resource = "deviceManagement/windowsDriverUpdateProfiles"
+$copypolicy = getpolicyjson -resource $Resource -policyid $id
+$rawassignments = $copypolicy[3]
+if ($rawassignments -eq "none") {
+$assignmentname = "No Available Assignment" 
+} 
+else {
+$assignmentname = convertidtoname -json $rawassignments.value -allgroups $allgroups -allfilters $allfilters
+}
+$profiles+= ,(@($copypolicy[0],$copypolicy[1],$copypolicy[2], $id, $assignmentname))
+}
+
 if ($null -ne $win365provisioning) {
     # W365 Provisioning Policy
 write-output "It's a W365 Provisioning Policy"
@@ -5722,6 +6374,7 @@ $profilesjson = $profiles | convertto-json -Depth 50
 ##Encode profiles to base64
 $profilesencoded =[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($profilesjson))
 
+if ($type -ne "livemigration") {
 
 if ($selected -eq "all") {
 $backupreason = "Automated Backup"
@@ -5802,7 +6455,7 @@ if ($repotype -eq "azuredevops") {
     Add-DevopsFile -repo $reponame -project $project -organization $ownername -filename $filename -filecontent $profilesjson -token $token -comment $backupreason
 
 }
-
+}
 
 }
 
@@ -5817,8 +6470,26 @@ if ($repotype -eq "azuredevops") {
 #########                                                   RESTORE                            ########################################
 #######################################################################################################################################
 
-if ($type -eq "restore") {
-##Grab the groups
+if (($type -eq "restore") -or ($type -eq "livemigration")) {
+
+if ($type -eq "livemigration") {
+    Disconnect-MgGraph
+    if ($secondtenant -and $clientsecret) {
+ 
+        Connect-ToGraph -Tenant $secondtenant -AppId $clientId -AppSecret $clientSecret
+        write-output "Graph Connection Established"
+        writelog "Graph Connection Established"
+        
+        }
+        else {
+        ##Connect to Graph
+        #Select-MgProfile -Name Beta
+        Connect-ToGraph -Scopes "Policy.ReadWrite.ConditionalAccess, CloudPC.ReadWrite.All, DeviceManagementServiceConfig.ReadWrite.All, RoleAssignmentSchedule.ReadWrite.Directory, Domain.Read.All, Domain.ReadWrite.All, Directory.Read.All, Policy.ReadWrite.ConditionalAccess, DeviceManagementApps.ReadWrite.All, DeviceManagementConfiguration.ReadWrite.All, DeviceManagementManagedDevices.ReadWrite.All, openid, profile, email, offline_access, DeviceManagementRBAC.Read.All, DeviceManagementRBAC.ReadWrite.All"
+        }
+        
+
+}
+    ##Grab the groups
 write-output "Grabbing Groups"
 writelog "Grabbing Groups"
 
@@ -5833,7 +6504,7 @@ $allfilters = getallfilters
 ###############################################################################################################
 ######                                          Get Commits                                              ######
 ###############################################################################################################
-
+if ($type -ne "livemigration") {
 if ($repotype -eq "github") {
 
     if ($WebHookData){
@@ -5845,9 +6516,26 @@ if ($repotype -eq "github") {
     write-output "Finding Latest Backup Commit from Repo $reponame in $ownername GitHub"
     writelog "Finding Latest Backup Commit from Repo $reponame in $ownername GitHub"
 
-    $uri = "https://api.github.com/repos/$ownername/$reponame/commits"
-    $events = (Invoke-RestMethod -Uri $uri -Method Get -Headers @{'Authorization'='bearer '+$token;}).commit
-    $events2 = $events | Select-Object message, url | Where-Object {($_.message -notmatch "\blog\b") -and ($_.message -notmatch "\bdelete\b")} | Out-GridView -PassThru -Title "Select Backup to View"        
+
+    $uri = "https://api.github.com/repos/$ownername/$reponame/commits?per_page=100"
+    $events = @()
+    $page = 1
+
+Do
+{
+    $response = Invoke-RestMethod -Headers @{'Authorization'='bearer '+$token;} -Uri "$uri&page=$page"
+    
+    foreach ($obj in $response)
+    {
+        $events += $obj.commit
+    }
+    
+    $page = $page + 1
+}
+While ($response.Count -gt 0)
+
+    ##$events = (Invoke-RestMethod -Uri $uri -Method Get -Headers @{'Authorization'='bearer '+$token;}).commit
+    $events2 = $events | Select-Object message, url | Where-Object {($_.message -notmatch "\blog\b") -and ($_.message -notmatch "\bdelete\b") -and ($_.message -notmatch "\bdaily\b") -and ($_.message -notmatch "\bdrift\b") -and ($_.message -notmatch "\bemplate\b")} | Out-GridView -PassThru -Title "Select Backup to View"
     ForEach ($event in $events2) 
         {
     $eventsuri = $event.url
@@ -5885,9 +6573,25 @@ if ($repotype -eq "github") {
         write-output "Finding Latest Backup Commit from Project $project in GitLab"
         writelog "Finding Latest Backup Commit from Project $project in GitLab"
 
-        $CommitsUrl = "$GitLabUrl/projects/$project/repository/commits"
-        $events = Invoke-RestMethod -Uri $CommitsUrl -Method Get -Headers $Headers
-        $events2 = $events | Select-object message, web_url | Where-Object {($_.message -notmatch "\blog\b") -and ($_.message -notmatch "\bdelete\b")} | Out-GridView -PassThru -Title "Select Backup to View"
+        $uri = "$GitLabUrl/projects/$project/repository/commits?per_page=100"
+        $events = @()
+        $page = 1
+    
+    Do
+    {
+        $response = Invoke-RestMethod -Headers @{'Authorization'='bearer '+$token;} -Uri "$uri&page=$page"
+        
+        foreach ($obj in $response)
+        {
+            $events += $obj.commit
+        }
+        
+        $page = $page + 1
+    }
+    While ($response.Count -gt 0)
+    
+        ##$events = (Invoke-RestMethod -Uri $uri -Method Get -Headers @{'Authorization'='bearer '+$token;}).commit
+        $events2 = $events | Select-Object message, web_url | Where-Object {($_.message -notmatch "\blog\b") -and ($_.message -notmatch "\bdelete\b") -and ($_.message -notmatch "\bdaily\b") -and ($_.message -notmatch "\bdrift\b") -and ($_.message -notmatch "\btemplate\b")} | Out-GridView -PassThru -Title "Select Backup to View"
             ForEach ($event in $events2) 
             {
         $eventsuri = $event.web_url
@@ -5925,7 +6629,7 @@ if ($repotype -eq "github") {
         writelog "Finding Latest Backup Commit from Repo $reponame in $ownername DevOps"
 
         $events = Get-DevOpsCommits -repo $reponame -project $project -organization $ownername -token $token
-        $events2 = $events | Select-object comment, url| Where-Object {($_.comment -notmatch "\blog\b") -and ($_.comment -notmatch "\bdelete\b")} | Out-GridView -PassThru -Title "Select Backup to View" 
+        $events2 = $events | Select-object comment, url| Where-Object {($_.comment -notmatch "\blog\b") -and ($_.comment -notmatch "\bdelete\b") -and ($_.comment -notmatch "\bdaily\b") -and ($_.comment -notmatch "\bdrift\b") -and ($_.comment -notmatch "\btemplate\b")} | Out-GridView -PassThru -Title "Select Backup to View"
         ForEach ($event in $events2) 
         {
             $eventsuri = $event.url
@@ -5942,7 +6646,7 @@ if ($repotype -eq "github") {
             $decodedbackup = $decodedbackup2.Substring(1)
             
     
-    
+}
     
     }
     
@@ -5950,7 +6654,10 @@ if ($repotype -eq "github") {
 ###############################################################################################################
 ######                                         GridView Policies within Backup                           ######
 ###############################################################################################################
-
+if ($type -eq "livemigration") {
+    $profilelist2 = $profilesjson | ConvertFrom-Json
+}
+else {
 if ($repotype -eq "azuredevops") {
 $profilelist2 = $decodedbackup | ConvertFrom-Json
 }
@@ -5960,10 +6667,27 @@ if ($repotype -eq "gitlab") {
 if ($repotype -eq "github") {
 $profilelist2 = $decodedbackup
 }
+}
 $oneormore = $profilelist2.Count
-write-host $oneormore
-if ($oneormore -gt 4) {
+write-output $oneormore
+if ($oneormore -gt 1) {
+        $firstarray = @()
+        $secondarray = @()
+        foreach ($loop in $profilelist2) {
+            $type2 = $loop.value[1]
+            if ($type2 -eq "https://graph.microsoft.com/beta/groups") {
+                $firstarray += $loop
+            }
+            else {
+                $secondarray += $loop
+            }
+        }
 
+        $joined = $firstarray + $secondarray
+
+        $fullist = $joined
+        $profilelist3 = $joined
+        $looplist = $profilelist3
 $fullist = $profilelist2
 $profilelist3 = $profilelist2
 $looplist = $profilelist3
@@ -5980,7 +6704,9 @@ foreach ($profiletemp in $fullist) {
 }
 }
 else {
+
 $fulllist = $profilelist2.value
+
 $profilelist3 = $fulllist
 $looplist = $profilelist3 | Select-Object -First 1
 $profilelist = @()
@@ -5994,7 +6720,6 @@ $idtoname = @()
     }
 }
 
-
 if (($namecheck -ne $true) -and ($idcheck -ne $true)) {
 
 
@@ -6005,7 +6730,8 @@ else {
     $temp = $profilelist | Out-GridView -Title "Select Object to Restore" -PassThru
 
 }
-if (($automated -eq "yes") -or ($WebHookData)) {
+if (($automated -eq "yes") -or ($WebHookData) -or ($assignments -eq "yes")) {
+
     ##Do nothing
     }
     else {
@@ -6063,6 +6789,19 @@ else {
             if ($tname -eq $profilevalue[2]) {
             $policyuri =  $profilevalue[1]
             $policyjson =  $profilevalue[0]
+            ##Check if $postedfilename contains template and if so, grab the first 36 characters of the filename
+            if ($postedfilename -match "Template") {
+                $templatename = $postedfilename.Substring(0,36)
+            ##Replaced $templatename with $tenant in the $policyjson
+            $policyjson = $policyjson -replace $templatename, $tenant
+            }
+            elseif ($type -eq "livemigration") {
+                $policyjson = $policyjson -replace $tenant, $secondtenant
+            }
+            else {
+                $templatename = "No Template"
+                $policyjson =  $profilevalue[0]
+            }
             $id = $profilevalue[3]
             $assignmentjson = $profilevalue[4]
             $policy = $policyjson
@@ -6071,9 +6810,17 @@ else {
                 write-output "Creating Conditional Access Policy"
                 writelog "Creating Conditional Access Policy"
                 $uri = "https://graph.microsoft.com/beta/identity/conditionalAccess/policies"
-                $oldname = $Policy.DisplayName
-                $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
-                $NewDisplayName = $oldname + "-restore-" + $restoredate        
+                if ($changename -eq "yes") {
+                    $policy.displayName = $newname
+                    $oldname = $Policy.DisplayName
+                    $restoredate = get-date -format dd-MM-yyyy-HH-mm-ss
+                    $NewDisplayName = $oldname + "-restore-" + $restoredate                 }
+                else {
+                    $policy.displayName = $newname
+                    $oldname = $Policy.DisplayName
+                    $NewDisplayName = $oldname
+                }        
+       
                 $Parameters = @{
                     displayName     = $NewDisplayName
                     state           = $policy.State
@@ -6124,7 +6871,7 @@ else {
             }
         }
             catch {
-
+write-output "error restoring $tname"
             }
 
 
@@ -6295,8 +7042,8 @@ else {
 # SIG # Begin signature block
 # MIIoGQYJKoZIhvcNAQcCoIIoCjCCKAYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDJPg9FGe8BqpOU
-# pL3V5eHHp7nxmmtepMT7Zx2TwEfPe6CCIRwwggWNMIIEdaADAgECAhAOmxiO+dAt
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAPJLDPj6WEKVgy
+# g3IRfsvCDkkKqi8xRBDxJrgytUSKQ6CCIRwwggWNMIIEdaADAgECAhAOmxiO+dAt
 # 5+/bUOIIQBhaMA0GCSqGSIb3DQEBDAUAMGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xJDAiBgNV
 # BAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQgUm9vdCBDQTAeFw0yMjA4MDEwMDAwMDBa
@@ -6478,33 +7225,33 @@ else {
 # aWduaW5nIFJTQTQwOTYgU0hBMzg0IDIwMjEgQ0ExAhAIsZ/Ns9rzsDFVWAgBLwDp
 # MA0GCWCGSAFlAwQCAQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJ
 # KoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQB
-# gjcCARUwLwYJKoZIhvcNAQkEMSIEIG39/L+gUIFsk9QzC7+YaiAQ5qlzkzeLHEnc
-# MgV8mexKMA0GCSqGSIb3DQEBAQUABIICAEw3at9Eeb4ouj+jC7y4sQOkHfDMlOlT
-# KLCE2178w9H6XBa7w+c/27CZGm4V3pXZk1VUZYe1XZRIXenJuSeqi2eUaSvl0BlQ
-# ywtx4V7Y7+9YF5cDRaZqseAbfx1kzEt0ZLHlCOvPaJOCi8DfcL3QXwoB9XOMHJwo
-# etiKqPhfmtPH5rDZ4rXQgblsFkZOexDyuiFpMxncdmroe+OSLWMa77AbNmMtTjpU
-# J8nk9YVqzY8PKyFaTCllv0ZbqvVZvST6bkOG5q/FaDpUqYNc5GTonmF+uLaOZtRt
-# bRv+bdExQ3HdPeMyUKVf5Z7e6x/t/EqJtOecNgDpVOZwl0DzevqVtP9jV+K2WJgQ
-# y8PDtLBkNQ0sFsO+SRfYpGudIglzOpbGcItGf5uKtyU9B9HU8rzhhMvcDfxzaDut
-# kdGxcpqnZvUijZ5Dyj/U60+7kKNEDEZkDsvB3KOObC1rii+gpEIOjWyA2QTpJG5k
-# 8df78uOXFKPFqUTtLksdGwGMU7tUDExPVYO9T2Pl6aZrvpvjfuqE5SqrcuotPqQQ
-# 0Yd01PEToqIHENVRhHiuRcd9y9lX7UBjyh1LxSOV5sJ/zGeDnsF+f2j+VOLQF5A9
-# 5130SlNgjBkIIxJZyXkahPuW99AZfEGwPw2X9nSVfyGZBvfYjxYjY8VBHM8sGKsG
-# PyaG3HttMcmToYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcwYzELMAkG
+# gjcCARUwLwYJKoZIhvcNAQkEMSIEIHkSOYSmo4Ai2ytEicbdtZ3IufEfn59LORmQ
+# 2UNbAUwcMA0GCSqGSIb3DQEBAQUABIICAEQacTJoINE20MwPXa9IfILcaXFG3otP
+# OsF8LePlqRG58W8J9/Jmum2gDvNiwdlib7l8Mobv2G/VYP8hs0wfgY5fOc22URuV
+# WRGVrjoa9L6Fkuh7xpW+pVI1Fp9LZKJoUYE/xZnchlQZVzavdOxaigHFOvgIQzpG
+# hdYhRvwSV6BrTM324TFmR1Upb5viUEYxdAl2HWcRKvU3oyrUZ3bBxG2Efx/gd3DW
+# mQ7BspkueMEQbcZBYTQuNlQp4HMohONLWoklCsOeWLMpT9ZWWmcjnM0hhSPYzppr
+# 9sEvMSF2BlBOLnrCE81Z/J8r+d/FVidvZz4E3ZkMKsio3Y88ox0bHIVGh++vCNQ4
+# NgL2J+J7fh032TQCtxrUr6apfTgkJXllmPFObGVhuHlbeWG7xIRx+ry0o1b4c/mL
+# MOTs0O2Jn75tcDkH5K8Z8FDNraTn6FNnYmdJCBqL2eQskqwOlaXJGRp5SewqMkhb
+# KLwHb1zrf1EbczNxAxS/RsRyIXX475CCr3/XIlOstZVg7n7XOJOicQGossmAqWJs
+# 8pmE4jNMNAbP3Dv13V+ybXlLOomlQxJwIOTihdwKwTi4+9ybg4VTSmgfqx66LfcQ
+# 0LUaKqB9gyXwd8QC7Nm64R9tsh65engHRMpd8IkiP1YiDlInV5t/jjZCcXKxHtXb
+# BN6M/n34ppEYoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcwYzELMAkG
 # A1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTswOQYDVQQDEzJEaWdp
 # Q2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVTdGFtcGluZyBDQQIQ
 # BUSv85SdCDmmv9s/X+VhFjANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzEL
-# BgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDExMjE1MTY0NFowLwYJKoZI
-# hvcNAQkEMSIEIBka6yPphMDbDhWGft1DmwaYfyR3IBdRMR1C++Hq2kAEMA0GCSqG
-# SIb3DQEBAQUABIICAB/ZS0pdsO4Cm28nzdXPsxkP3kXWlvgcxphZr9cYplkplSqI
-# B1WPC40FdP8mxOZUedC/FoQp3jC4eRqbj4CZMv3zau7+2TvCeWs/RK9pi9b9O4qn
-# 1LH0WxEdL0N6LyZNSBtEqkbWCnXc9HQFIkVJTJsruQ+t93xp1+4zAWI23R2dZjp/
-# Gdt6W9TwbQ+jJdW/r4FIl1SR694lllca8IrJLvWi6mT9j8DLeR4F8wADlcCERPDB
-# z0qMROL6q4/29Dx9D8hTqWI/gfeA3SiYETQVF52HedoMFTGXo1uolKKm8tO9njuv
-# mwAUDwUXHJL8SQeW/x1KWiZtIgNOqq4I88pVJ2noyMmv7bSBjQCcEaNvZktCaON3
-# ks9TedSU0WUD5h3g9yo+7a0iHTGwtSTtLmm6mxzq/kpE+vpXk1jGBNe67QdSMBor
-# hJuX7yXCajefjJ9bgGdVF+1ffxvjTB0s3/a/7ndixHxLQplckdP9qvYm/e17VBef
-# BpfyuNfTSKseyUQJ6TPnM+3fpIg7kA1UUumWzfhj/nSeX39xRbiwPeuXuBnF4317
-# eK5W27X6FDbmAyZdHeScNV01UcXqDSlZtXqL1N+fq1qHVSkE3M27sWRPUhW4F3sB
-# 2JqJ/tX5xhlMpQeskJWWQfVp41ItsN6tWUKEqeoTRJCENl5ANScozdqGV6Ld
+# BgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDYwNTEzNTQxOVowLwYJKoZI
+# hvcNAQkEMSIEIAtue+eIFcr2t6KNtMJWFZVLLbYXs84kG7tXXaVZ5a7hMA0GCSqG
+# SIb3DQEBAQUABIICACfe0MiXc2X74Kt8c7Y+RUqJGW6hwKm8QO/ZFaXbPvINJU51
+# sVNVd6TxKZuwP5gATq3FOfPBRexa9xAr6ToDhCO6OZUfEGmdZAdNET0fUiEQI/OJ
+# AXOvb2piR8zUVOXKUqx1Oi3t5c1yhnEttO8xqaGYnBYtZCWZ9IFXScbtfqk8mcv3
+# 1zutfqoHWRvun4+ws3+YYO7DKecEomKL5zJ1tAtqRPCa+foNyHjF6LxDSO6nlVaY
+# Ia5qhFeqLiP4jJsEjtQ/FE2XOPGGpwXiTyPA0Hf+vWVAtr9Z2tKX9Y6JCJlM2GHn
+# ots0VoOl3aF5+utsokf+hs7EP5K6ZLa3w6A9+H7B31b50Yo/R9isniffvEVI3Yb1
+# V90uTrSZlGB1jzmiPUzj6BUiCVTePJQCAePTpmSW2PJP9x3iTzVKJRu0rAyqBMbY
+# gRLZsslWQA8kKDXCgA7ZVTKTxiC4pHTalHPTRIR3nhYO6XbwLPVDW5PdBdlvukcU
+# wDHjAbapQ6uqbqisa8QbWfpLenawIJyZXgh/Os29sfUtoC15AudH+w1JlbDfBXTu
+# p3HkZhAypGSnNgpDHvOr8BZai6SLTjyz8Ii5XqwW2vK+peQNHvxzGeXN75Ev7De9
+# 71N+ZCmrlFVFyUHZTxhDGTpVDbM4srkBFXLem0bWVypKLbOmSV/TBftT/hgv
 # SIG # End signature block
